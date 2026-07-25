@@ -11,6 +11,8 @@ on:
 
 jobs:
   report:
+    # Skip (instead of failing) until the store is configured — see abandoned-cart.yml.
+    if: ${{ vars.SITE_URL != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Trigger weekly report
