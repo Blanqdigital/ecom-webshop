@@ -1,8 +1,13 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getStripe } from "@/lib/stripe";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { finalizeVippsPayment } from "@/lib/vipps";
+import { PRODUCTS } from "@/lib/products";
 import { PurchaseTracker } from "@/components/store/PurchaseTracker";
+import { COMPANY } from "@/lib/company";
+import { orderStatusUrl, orderTokensConfigured } from "@/lib/order-token";
+import { getPostPurchaseOffer } from "@/lib/post-purchase";
 
 export const metadata = {
   title: "Takk for bestillingen",
@@ -20,24 +25,18 @@ function slugsFrom(cartMeta?: string): string[] {
   try {
     const cart = JSON.parse(cartMeta ?? "[]") as { slug?: string }[];
     const ids = [...new Set(cart.map((i) => i.slug).filter(Boolean))] as string[];
-    return ids.length ? ids : ["baereslyngen"];
+    return ids.length ? ids : PRODUCTS[0]?.slug ? [PRODUCTS[0].slug] : [];
   } catch {
-    return ["baereslyngen"];
+    return PRODUCTS[0]?.slug ? [PRODUCTS[0].slug] : [];
   }
 }
 
-// Look up the completed order (hosted Checkout Session OR custom Payment
-// Element PaymentIntent) so the Meta Pixel Purchase reports the real value.
-// Fails soft: if Stripe isn't configured or the id is missing/invalid, the page
-// still renders without tracking.
 async function getPurchase(args: {
   sessionId?: string;
   paymentIntent?: string;
   vipps?: string;
   free?: string;
 }): Promise<Purchase | null> {
-  // 100%-coupon order (recorded by /api/free-order): read it back from the DB
-  // so the pixel Purchase fires with the (0 kr) order like any other.
   if (args.free) {
     try {
       const supabase = getSupabaseAdmin();
@@ -60,8 +59,6 @@ async function getPurchase(args: {
       return null;
     }
   }
-  // Vipps: finalise (capture + record) on return, in case the webhook hasn't
-  // fired yet. Idempotent, so a duplicate with the webhook is harmless.
   if (args.vipps) {
     try {
       const r = await finalizeVippsPayment(args.vipps);
@@ -74,14 +71,14 @@ async function getPurchase(args: {
         };
       }
     } catch {
-      /* fall through to no-tracking render */
+      /* fall through */
     }
     return null;
   }
 
   if (!args.sessionId && !args.paymentIntent) return null;
   try {
-    const stripe = getStripe();
+    const stripe = await getStripe();
 
     if (args.paymentIntent) {
       const pi = await stripe.paymentIntents.retrieve(args.paymentIntent);
@@ -115,15 +112,30 @@ export default async function ThankYouPage({
     payment_intent?: string;
     vipps?: string;
     free?: string;
+    skip_offer?: string;
   }>;
 }) {
-  const { session_id, payment_intent, vipps, free } = await searchParams;
+  const { session_id, payment_intent, vipps, free, skip_offer } = await searchParams;
+
+  // Card Payment Element: show post-purchase offer when configured.
+  if (payment_intent && !skip_offer && !vipps && !free) {
+    const offer = await getPostPurchaseOffer(payment_intent);
+    if (offer) {
+      redirect(`/tilbud?payment_intent=${encodeURIComponent(payment_intent)}`);
+    }
+  }
+
   const purchase = await getPurchase({
     sessionId: session_id,
     paymentIntent: payment_intent,
     vipps,
     free,
   });
+
+  const statusUrl =
+    purchase && orderTokensConfigured()
+      ? orderStatusUrl(purchase.orderId, COMPANY.url)
+      : null;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-6 text-center">
@@ -135,7 +147,7 @@ export default async function ThankYouPage({
           contentIds={purchase.contentIds}
         />
       )}
-      <div className="mb-5 font-serif text-[34px] tracking-[0.04em]">BÆRA</div>
+      <div className="mb-5 font-serif text-[34px] tracking-[0.04em]">{COMPANY.brand}</div>
       <div className="mb-3 text-[12px] uppercase tracking-[0.16em] text-clay">
         Bestilling bekreftet
       </div>
@@ -146,12 +158,22 @@ export default async function ThankYouPage({
         Vi har mottatt bestillingen din og sender deg en bekreftelse på e-post.
         Pakken er på vei innen 7–10 dager.
       </p>
-      <Link
-        href="/"
-        className="rounded-full bg-ink px-9 py-[15px] text-[15px] font-semibold text-cream transition-colors hover:bg-clay"
-      >
-        Tilbake til butikken
-      </Link>
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        {statusUrl && (
+          <Link
+            href={statusUrl}
+            className="rounded-full border border-ink px-9 py-[15px] text-[15px] font-semibold text-ink transition-colors hover:bg-white"
+          >
+            Følg bestillingen
+          </Link>
+        )}
+        <Link
+          href="/"
+          className="rounded-full bg-ink px-9 py-[15px] text-[15px] font-semibold text-cream transition-colors hover:bg-clay"
+        >
+          Tilbake til butikken
+        </Link>
+      </div>
     </div>
   );
 }
