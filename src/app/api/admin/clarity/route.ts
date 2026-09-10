@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { authenticateAdmin } from "@/lib/supabase";
+import { getIntegration } from "@/lib/integrations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Microsoft Clarity "Data Export" live-insights endpoint. Returns aggregated
-// metrics for the last 1–3 days. Auth is a project-scoped Bearer token generated
-// in clarity.microsoft.com → Settings → Data export.
+// metrics for the last 1–3 days. Auth is a project-scoped Bearer token
+// (env CLARITY_API_TOKEN or Admin → Integrations).
 const CLARITY_API =
   "https://www.clarity.ms/export-data/api/v1/project-live-insights";
 
@@ -95,7 +96,7 @@ export async function GET(req: Request) {
   if (!auth.ok)
     return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const token = process.env.CLARITY_API_TOKEN;
+  const token = (await getIntegration("clarity_api_token")).trim();
   // Mirror the funnel's "ready" pattern: a 200 with configured:false lets the UI
   // show a setup hint instead of a scary error.
   if (!token) return NextResponse.json({ configured: false });
