@@ -1,156 +1,214 @@
-// Transactional email via Resend (https://resend.com). Plain fetch, no SDK.
-// No-ops when resend_api_key is unset (env or Admin → Integrations), so the
-// store runs without email until you add the key + a verified sending domain.
 import { COMPANY } from "./company";
-import { getProduct } from "./products";
-import type { ProductColor } from "./products";
-import { getSupabaseAdmin } from "./supabase";
 import { unsubToken, type AbandonedItem } from "./abandoned";
-import { getIntegration } from "./integrations";
+import {
+  type OrderEmailData,
+  type SendResult,
+  money,
+  dateNo,
+  methodLabel,
+  itemLines,
+  itemLinesText,
+  addressBlock,
+  addressText,
+  shell,
+  textShell,
+  send,
+  emailCredentials,
+} from "./email-shared";
 
-export interface OrderEmailData {
-  id: string;
-  email: string | null;
-  name: string | null;
-  amountTotal: number | null;
-  currency: string;
-  items: { slug?: string; colorId?: string; qty?: number; bump?: boolean }[] | null;
-  address: {
-    line1?: string | null;
-    line2?: string | null;
-    postal_code?: string | null;
-    city?: string | null;
-    state?: string | null;
-    country?: string | null;
-  } | null;
-  phone: string | null;
-  /** "card" | "vipps" — shown in the admin alert. */
-  method?: string;
-}
+export type { OrderEmailData, SendResult, EmailType } from "./email-shared";
 
-/** Human label for the payment method used. */
-function methodLabel(method?: string): string {
-  if (method === "vipps") return "Vipps";
-  if (method === "card") return "Kort";
-  return "—";
-}
+/** Send the admin new-order alert and the customer confirmation (best-effort). */
+export async function sendOrderEmails(o: OrderEmailData): Promise<void> {
+  const { key, from, notifyTo } = await emailCredentials();
+  if (!key) return;
 
-const money = (n: number, ccy: string) =>
-  new Intl.NumberFormat("nb-NO", {
-    style: "currency",
-    currency: ccy || "NOK",
-    maximumFractionDigits: 0,
-  }).format(n || 0);
+  const total = money(o.amountTotal ?? 0, o.currency);
+  const items = itemLines(o.items);
+  const itemsText = itemLinesText(o.items);
+  // Replies to ordre@ would vanish; send them to the monitored inbox instead.
+  const replyTo = COMPANY.email;
 
-const dateNo = (d: Date) =>
-  new Intl.DateTimeFormat("nb-NO", {
-    day: "numeric",
-    month: "long",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
+  // Admin notification
+  await send(key, {
+    from,
+    to: notifyTo,
+    replyTo,
+    subject: `Ny ordre · ${total}${o.name ? ` · ${o.name}` : ""}`,
+    text: textShell(
+      "Ny ordre 🎉",
+      `Kunde: ${o.name ?? "—"}\nE-post: ${o.email ?? "—"}\nTelefon: ${
+        o.phone ?? "—"
+      }\nBetaling: ${methodLabel(o.method)}\nBeløp: ${total}\n\nVarer:\n${itemsText}\n\nLeveringsadresse:\n${addressText(
+        o.address,
+      )}\n\nÅpne admin: ${COMPANY.url}/admin`,
+    ),
+    html: shell(
+      "Ny ordre 🎉",
+      `<table style="font-size:14px;width:100%"><tbody>
+        <tr><td style="color:#8a8a84;padding:3px 0">Kunde</td><td style="text-align:right">${o.name ?? "—"}</td></tr>
+        <tr><td style="color:#8a8a84;padding:3px 0">E-post</td><td style="text-align:right">${o.email ?? "—"}</td></tr>
+        <tr><td style="color:#8a8a84;padding:3px 0">Telefon</td><td style="text-align:right">${o.phone ?? "—"}</td></tr>
+        <tr><td style="color:#8a8a84;padding:3px 0">Betaling</td><td style="text-align:right">${methodLabel(o.method)}</td></tr>
+        <tr><td style="color:#8a8a84;padding:3px 0">Beløp</td><td style="text-align:right;font-weight:600">${total}</td></tr>
+      </tbody></table>
+      <p style="font-size:13px;color:#8a8a84;margin:16px 0 4px">Varer</p>
+      <table style="font-size:14px;width:100%"><tbody>${items}</tbody></table>
+      <p style="font-size:13px;color:#8a8a84;margin:16px 0 4px">Leveringsadresse</p>
+      <p style="font-size:14px;margin:0">${addressBlock(o.address)}</p>
+      <p style="margin:20px 0 0"><a href="${COMPANY.url}/admin" style="display:inline-block;background:#1c1c1a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px">Åpne admin</a></p>`,
+    ),
+  }, "order_admin");
 
-/** Absolute URL for a /public asset, so email clients can load it.
- *  WebP is swapped for JPEG: the site serves .webp, but Outlook on Windows
- *  can't render it, so email points at the .jpg twin generated alongside it. */
-function emailImageUrl(path: string): string {
-  if (!path) return "";
-  const jpg = path.replace(/\.webp$/i, ".jpg");
-  if (/^https?:\/\//i.test(jpg)) return jpg;
-  return `${COMPANY.url}${jpg.startsWith("/") ? "" : "/"}${jpg}`;
-}
-
-/** Thumbnail cell for a variant, or an empty spacer when no image is known.
- *  Width/height are set as attributes AND inline styles for Outlook, which
- *  ignores CSS sizing on <img>. */
-function thumbCell(c: ProductColor | undefined, alt: string): string {
-  if (!c?.image) {
-    return `<td width="56" style="width:56px"></td>`;
+  // Customer confirmation
+  if (o.email) {
+    const firstName = o.name ? o.name.split(" ")[0] : "";
+    await send(key, {
+      from,
+      to: o.email,
+      replyTo,
+      subject: `Takk for bestillingen din hos ${COMPANY.brand}`,
+      text: textShell(
+        "Takk for bestillingen!",
+        `Hei ${firstName}, vi har mottatt bestillingen din og pakker den snart. Du får sporing på e-post når den sendes.\n\nDin bestilling:\n${itemsText}\n\nFrakt: Gratis\nTotalt: ${total}\n\nSpørsmål? Svar på denne e-posten eller kontakt ${COMPANY.email}.`,
+      ),
+      html: shell(
+        "Takk for bestillingen!",
+        `<p style="font-size:14px;line-height:1.6">Hei ${
+          o.name ? o.name.split(" ")[0] : ""
+        }, vi har mottatt bestillingen din og pakker den snart. Du får sporing på e-post når den sendes.</p>
+        <p style="font-size:13px;color:#8a8a84;margin:16px 0 4px">Din bestilling</p>
+        <table style="font-size:14px;width:100%"><tbody>${items}</tbody></table>
+        <table style="font-size:14px;width:100%;margin-top:8px"><tbody>
+          <tr><td style="color:#8a8a84;padding:3px 0">Frakt</td><td style="text-align:right">Gratis</td></tr>
+          <tr><td style="padding:3px 0;font-weight:600">Totalt</td><td style="text-align:right;font-weight:600">${total}</td></tr>
+        </tbody></table>
+        <p style="font-size:13px;color:#8a8a84;margin-top:20px">Spørsmål? Svar på denne e-posten eller kontakt ${COMPANY.email}.</p>`,
+      ),
+    }, "order_confirmation");
   }
-  return `<td width="56" style="width:56px;vertical-align:top">
-    <img src="${emailImageUrl(c.image)}" width="56" height="56" alt="${alt}"
-      style="width:56px;height:56px;object-fit:cover;border-radius:8px;display:block;border:1px solid #eee" />
-  </td>`;
 }
 
-/** Order/cart line items as table rows, each with the variant thumbnail.
- *  Rows are dropped into a `<table><tbody>…</tbody></table>` by the caller. */
-function itemLines(items: OrderEmailData["items"]): string {
-  const rows = (Array.isArray(items) ? items : []).map((it) => {
-    const p = getProduct(it.slug ?? "");
-    const c = p?.colors.find((x) => x.id === it.colorId);
-    const name = p?.name ?? it.slug ?? "Produkt";
-    const variant = c?.name ?? it.colorId ?? "";
-    return `<tr>
-      ${thumbCell(c, `${name} — ${variant}`)}
-      <td style="padding:8px 0 8px 12px;vertical-align:top">
-        <div style="font-weight:600">${name}</div>
-        <div style="color:#8a8a84;font-size:13px">${variant}${
-          it.bump ? " · tilbud −30%" : ""
-        }</div>
-      </td>
-      <td style="padding:8px 0;text-align:right;vertical-align:top;white-space:nowrap;color:#8a8a84">× ${
-        it.qty ?? 1
-      }</td>
-    </tr>`;
-  });
-  return rows.join("") || `<tr><td style="padding:8px 0">—</td></tr>`;
+export interface AbandonedEmailData {
+  email: string;
+  items: AbandonedItem[] | null;
+  subtotal: number | null;
+  currency: string;
+  /** Sale deadline (adds truthful urgency) or null when the sale is open-ended. */
+  saleEndsAt: Date | null;
+  /** Flow step: 1 = first nudge (default), 2 = final "offer still stands". */
+  step?: 1 | 2;
 }
 
-function addressBlock(a: OrderEmailData["address"]): string {
-  if (!a) return "—";
-  return [
-    a.line1,
-    a.line2,
-    [a.postal_code, a.city].filter(Boolean).join(" "),
-    a.country,
-  ]
-    .filter(Boolean)
-    .join("<br>");
+/**
+ * Render an abandoned-cart flow email without sending it — shared by the
+ * sender below and the admin Marketing tab's template previews.
+ * Step 1: "Handlekurven venter på deg" — the first nudge, ~30 min after abandon.
+ * Step 2: "Tilbudet ditt står fortsatt" — the FINAL email, ~24 h after step 1;
+ *         explicitly says it's the last reminder.
+ */
+export function buildAbandonedCartEmail(o: AbandonedEmailData): {
+  subject: string;
+  title: string;
+  html: string;
+  text: string;
+  unsubUrl: string;
+} {
+  const step = o.step === 2 ? 2 : 1;
+  const items = itemLines(o.items);
+  const total = money(o.subtotal ?? 0, o.currency);
+  const checkoutUrl = `${COMPANY.url}/kasse`;
+  const unsubUrl = `${COMPANY.url}/api/email/unsubscribe?e=${encodeURIComponent(
+    o.email,
+  )}&t=${unsubToken(o.email)}`;
+
+  const urgencyText = o.saleEndsAt
+    ? `🔥 Sommersalget varer bare til ${dateNo(
+        o.saleEndsAt,
+      )}. Fullfør nå for å sikre deg tilbudsprisen.`
+    : `Slyngene våre selges raskt — sikre din før favorittmønsteret blir utsolgt.`;
+  const urgency = `<p style="font-size:14px;line-height:1.6;background:#f7f1e8;border-radius:8px;padding:12px 14px;margin:16px 0">${
+    o.saleEndsAt
+      ? urgencyText.replace(
+          dateNo(o.saleEndsAt),
+          `<strong>${dateNo(o.saleEndsAt)}</strong>`,
+        )
+      : urgencyText
+  }</p>`;
+
+  const subject =
+    step === 2
+      ? `Tilbudet ditt står fortsatt hos ${COMPANY.brand} 🧡`
+      : `Du glemte noe hos ${COMPANY.brand} 🧡`;
+  const title =
+    step === 2 ? "Tilbudet ditt står fortsatt" : "Handlekurven venter på deg";
+  const intro =
+    step === 2
+      ? "Hei! Vi holder fortsatt av handlekurven din, og prisene og fri frakt gjelder fortsatt. Dette er den siste påminnelsen fra oss — etterpå lar vi deg være i fred."
+      : "Hei! Vi tok vare på handlekurven din. Den ligger klar – fullfør bestillingen når det passer deg.";
+  const footer =
+    step === 2
+      ? "Dette er den siste e-posten fra oss om denne handlekurven."
+      : "";
+
+  const text = textShell(
+    title,
+    `${intro.replace(/<[^>]+>/g, "")}\n\nI handlekurven din:\n${itemLinesText(
+      o.items,
+    )}\n\nFrakt: Gratis\nSum: ${total}\n\n${urgencyText}\n\nFullfør bestillingen: ${checkoutUrl}\n${
+      footer ? `\n${footer}\n` : ""
+    }\nDu får denne e-posten fordi du la igjen e-postadressen din i kassen hos ${COMPANY.brand}. Meld deg av: ${unsubUrl}`,
+  );
+
+  const html = shell(
+    title,
+    `<p style="font-size:14px;line-height:1.6">${intro}</p>
+    <p style="font-size:13px;color:#8a8a84;margin:16px 0 4px">I handlekurven din</p>
+    <table style="font-size:14px;width:100%"><tbody>${items}</tbody></table>
+    <table style="font-size:14px;width:100%;margin-top:8px"><tbody>
+      <tr><td style="color:#8a8a84;padding:3px 0">Frakt</td><td style="text-align:right">Gratis</td></tr>
+      <tr><td style="padding:3px 0;font-weight:600">Sum</td><td style="text-align:right;font-weight:600">${total}</td></tr>
+    </tbody></table>
+    ${urgency}
+    <p style="margin:22px 0 0"><a href="${checkoutUrl}" style="display:inline-block;background:#1c1c1a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600">Fullfør bestillingen</a></p>
+    ${
+      footer
+        ? `<p style="font-size:12px;color:#8a8a84;margin-top:20px">${footer}</p>`
+        : ""
+    }
+    <p style="font-size:11px;color:#8a8a84;margin-top:${footer ? "8" : "24"}px">Du får denne e-posten fordi du la igjen e-postadressen din i kassen hos ${COMPANY.brand}. Vil du ikke ha flere påminnelser? <a href="${unsubUrl}" style="color:#8a8a84">Meld deg av her</a>.</p>`,
+  );
+
+  return { subject, title, html, text, unsubUrl };
 }
 
-function shell(title: string, body: string): string {
-  return `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#1c1c1a">
-    <div style="font-size:22px;letter-spacing:.04em;font-weight:600;padding:8px 0 16px">${COMPANY.brand}</div>
-    <h1 style="font-size:19px;margin:0 0 16px">${title}</h1>
-    ${body}
-    <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
-    <p style="font-size:12px;color:#8a8a84">${COMPANY.legalName} · Org.nr ${COMPANY.orgNr} · ${COMPANY.email}</p>
-  </div>`;
-}
+/**
+ * Send an abandoned-cart flow email (step 1 or 2). Best-effort; returns whether
+ * it was sent so the cron only stamps the sent-timestamp on success. Always
+ * carries an unsubscribe link (markedsføringsloven), and only the cron decides
+ * who is eligible (consent + live sale).
+ */
+export async function sendAbandonedCartEmail(
+  o: AbandonedEmailData,
+): Promise<SendResult> {
+  const { key, from } = await emailCredentials();
+  if (!key) return { ok: false, error: "RESEND_API_KEY not set" };
+  if (!o.email) return { ok: false, error: "no recipient" };
 
-// --- Plain-text alternatives -------------------------------------------------
-// Every email ships a hand-written text/plain part alongside the HTML. Letting
-// Resend auto-derive it from the HTML tables produced run-on garbage, which
-// spam filters penalise; a clean text part improves inbox placement.
+  const { subject, html, text, unsubUrl } = buildAbandonedCartEmail(o);
 
-/** Line items as plain text, one per line: "1 × Bæreslyngen — Sort". */
-function itemLinesText(items: OrderEmailData["items"]): string {
-  const rows = (Array.isArray(items) ? items : []).map((it) => {
-    const p = getProduct(it.slug ?? "");
-    const c = p?.colors.find((x) => x.id === it.colorId);
-    const name = p?.name ?? it.slug ?? "Produkt";
-    const variant = c?.name ?? it.colorId ?? "";
-    return `${it.qty ?? 1} × ${name}${variant ? ` — ${variant}` : ""}${
-      it.bump ? " (tilbud −30%)" : ""
-    }`;
-  });
-  return rows.join("\n") || "—";
-}
-
-function addressText(a: OrderEmailData["address"]): string {
-  if (!a) return "—";
-  return [
-    a.line1,
-    a.line2,
-    [a.postal_code, a.city].filter(Boolean).join(" "),
-    a.country,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** Wrap a plain-text body with the same brand header + legal footer as shell(). */
-function textShell(title: string, body: string): string {
-  return `${COMPANY.brand}\n\n${title}\n\n${body}\n\n—\n${COMPANY.legalName} · Org.nr ${COMPANY.orgNr} · ${COMPANY.email}`;
+  return send(key, {
+    from,
+    to: o.email,
+    subject,
+    // Replies go to the monitored inbox; and one-click unsubscribe (RFC 8058)
+    // so Gmail/Apple show a native "Unsubscribe" and trust the mail more.
+    replyTo: COMPANY.email,
+    headers: {
+      "List-Unsubscribe": `<${unsubUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    },
+    text,
+    html,
+  }, o.step === 2 ? "cart_reminder_2" : "cart_reminder");
 }
