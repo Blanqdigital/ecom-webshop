@@ -6,16 +6,10 @@ import { findValidCoupon, discountOre } from "@/lib/coupons";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Re-prices the cart (incl. the optional order bump) on the SERVER and updates
- * the pending PaymentIntent's amount + cart metadata before the client confirms
- * it. This keeps the same clientSecret/Element mounted, so toggling the bump
- * doesn't reset the card form. The amount is never taken from the client.
- */
 export async function POST(req: Request) {
   let stripe;
   try {
-    stripe = getStripe();
+    stripe = await getStripe();
   } catch {
     return NextResponse.json(
       { error: "Betaling er ikke konfigurert." },
@@ -41,7 +35,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message }, { status: err.status ?? 400 });
   }
 
-  // Optional coupon — same server-side rules as at create time.
   let amountOre = priced.amountOre;
   let couponCode: string | undefined;
   const coupon = await findValidCoupon(body?.coupon);
@@ -49,7 +42,7 @@ export async function POST(req: Request) {
     amountOre = discountOre(amountOre, coupon.percent_off);
     couponCode = coupon.code;
     if (amountOre === 0) return NextResponse.json({ free: true });
-    if (amountOre < 300) amountOre = 300; // Stripe's ~3 NOK minimum charge
+    if (amountOre < 300) amountOre = 300;
   }
 
   try {

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   let stripe;
   try {
-    stripe = getStripe();
+    stripe = await getStripe();
   } catch {
     return NextResponse.json(
       { error: "Betaling er ikke konfigurert ennå." },
@@ -36,8 +36,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Optional coupon — validated + applied SERVER-side. A total of 0 can't be
-  // charged by Stripe; the client must use the free-order flow instead.
   let amountOre = priced.amountOre;
   let couponCode: string | undefined;
   const coupon = await findValidCoupon(body?.coupon);
@@ -45,7 +43,7 @@ export async function POST(req: Request) {
     amountOre = discountOre(amountOre, coupon.percent_off);
     couponCode = coupon.code;
     if (amountOre === 0) return NextResponse.json({ free: true });
-    if (amountOre < 300) amountOre = 300; // Stripe's ~3 NOK minimum charge
+    if (amountOre < 300) amountOre = 300;
   }
 
   let intent;
