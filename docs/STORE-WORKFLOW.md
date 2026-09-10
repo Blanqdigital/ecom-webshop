@@ -41,6 +41,11 @@ it without re-encrypting settings makes existing values unreadable.
 
 ## 4. Configure and build the store
 
+Follow [the product-page structure](methodology/PRODUCT-PAGE.md) as well as the
+landing-page methodology. The sample shell is not the finished visual standard.
+Include a real gallery, compact purchase panel and image-led sections before
+asking for storefront review.
+
 - `src/lib/company.ts`: verified seller and contact details.
 - `src/lib/site.ts`: canonical URL and market metadata.
 - `src/lib/products.ts`: catalogue, real owned/licensed images and descriptions.

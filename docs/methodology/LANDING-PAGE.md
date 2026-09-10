@@ -7,6 +7,9 @@ full transcript in [`sources/transcript-copy-my-landing-page-template.md`](sourc
 his whiteboard in [`sources/landing-page-whiteboard.png`](sources/landing-page-whiteboard.png).
 
 **When building a new store from this template, follow this document.**
+Also follow [the required product-page structure](PRODUCT-PAGE.md): gallery,
+compact buying controls and image-led sections. Use only substantiated claims;
+the example transformations, timeframes and reviews below are not default copy.
 First implementation: SVEVA (sveva.vercel.app) — use it as the living example.
 
 ## Core principles
