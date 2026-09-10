@@ -4,6 +4,7 @@ import { sendOrderEmails } from "./email";
 import { sendTelegramOrder } from "./telegram";
 import { createShopifyOrder } from "./shopify";
 import { markCartConverted } from "./abandoned";
+import { PRODUCTS } from "./products";
 import { SITE } from "./site";
 
 // Shared order-recording pipeline. Both the Stripe webhook and the Vipps flow
@@ -123,10 +124,9 @@ export async function recordOrder(o: OrderInput) {
     await sendOrderEmails(notification);
     await sendTelegramOrder(notification);
 
-    // Fulfilment: mirror the paid order into the Shopify store TeamDrop is
-    // connected to. Only on first sighting, so webhook retries can't create
-    // duplicate Shopify orders. Best-effort — a sync failure never blocks the
-    // pipeline (the order is already recorded + notified).
+    // Fulfilment: mirror the paid order into the Shopify store. Only on first
+    // sighting, so webhook retries can't create duplicate Shopify orders.
+    // Best-effort — a sync failure never blocks the pipeline.
     const sync = await createShopifyOrder({
       reference: o.id,
       email: order.email,
@@ -140,12 +140,36 @@ export async function recordOrder(o: OrderInput) {
     if (!sync.ok) {
       console.error("[shopify] order not synced:", JSON.stringify(sync));
     }
+
+    if (supabase) {
+      const meta: Record<string, unknown> = { locale: "nb" };
+      if (sync.ok && sync.orderId) meta.shopify_order_id = sync.orderId;
+      if (sync.ok && sync.orderName) meta.shopify_order_number = sync.orderName;
+      let { error } = await supabase
+        .from("orders")
+        .update(meta)
+        .eq("stripe_session_id", o.id);
+      if (error && /shopify_order_number/.test(error.message)) {
+        delete meta.shopify_order_number;
+        ({ error } = await supabase
+          .from("orders")
+          .update(meta)
+          .eq("stripe_session_id", o.id));
+      }
+      if (error) {
+        console.error(
+          "[orders] shipping metadata not stored (run supabase/schema.sql):",
+          error.message,
+        );
+      }
+    }
   }
 }
 
 /** Product slugs from the stored cart, for CAPI content_ids. */
 function cartSlugs(items: unknown): string[] {
-  if (!Array.isArray(items)) return ["baereslyngen"];
+  const fallback = PRODUCTS[0]?.slug ? [PRODUCTS[0].slug] : [];
+  if (!Array.isArray(items)) return fallback;
   const slugs = [
     ...new Set(
       items
@@ -155,7 +179,7 @@ function cartSlugs(items: unknown): string[] {
         .filter((s): s is string => typeof s === "string"),
     ),
   ];
-  return slugs.length ? slugs : ["baereslyngen"];
+  return slugs.length ? slugs : fallback;
 }
 
 function safeParse(v: string | undefined) {
