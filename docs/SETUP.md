@@ -38,7 +38,7 @@ samples you still need to replace.
 
 New project → SQL editor → paste **all of `supabase/schema.sql`** → run.
 That creates `orders`, `abandoned_carts`, `funnel_events`, `email_log`,
-`store_settings`, `store_todos`, `coupons` (RLS on, no policies — service-role
+`store_settings`, `app_settings`, `store_todos`, `coupons` (RLS on, no policies — service-role
 only). Copy URL + anon key + service-role key into env.
 
 ## 4. Bootstrap env → deploy → Admin Integrations
@@ -125,7 +125,13 @@ overrides (the admin field locks when one is set).
 - **Telegram order alerts**: bot token + chat id in Integrations
   (message the bot once first; group IDs are negative).
 
-## 10. Fulfilment via Shopify (optional, dropship suppliers)
+## 10. Inventory (soft stock)
+
+In `/admin` → **Products**, enter physical on-hand counts per variant. Paid
+orders after each count deduct automatically (`app_settings.product_inventory_v1`).
+Zero stock stays purchasable; the storefront shows an extra-delivery notice.
+
+## 11. Fulfilment via Shopify (optional, dropship suppliers)
 
 If the supplier only fulfils through Shopify (e.g. TeamDrop):
 
@@ -136,8 +142,22 @@ If the supplier only fulfils through Shopify (e.g. TeamDrop):
    (token + store domain).
 3. Update `SHOPIFY_VARIANT_MAP` + `PRODUCT_GID` in `src/lib/shopify.ts`.
    **Match variants by image, not by name** — supplier variant names lie.
-4. Test with `?shopify=testorder`, then cancel the test order in Shopify
+4. Paste **Shopify webhook secret** (custom app API secret) in Integrations
+   (or `SHOPIFY_WEBHOOK_SECRET` / `SHOPIFY_API_SECRET` env).
+5. In Integrations → **Register webhooks** (or POST `/api/admin/shopify-webhooks`)
+   so FULFILLMENTS_CREATE/UPDATE hit `/api/webhooks/shopify`.
+6. Test with `?shopify=testorder`, then cancel the test order in Shopify
    before the supplier ships it.
+
+### Post-purchase / order status
+
+- Set `ORDER_TOKEN_SECRET` (or Integrations) so confirmation emails link to
+  `/ordre/<token>` status pages.
+- Optional one-click upsell at `/tilbud` after card checkout — set
+  `POST_PURCHASE_TOKEN_SECRET`; no-ops until configured. Sample offer uses
+  the first product in `products.ts`.
+- Welcome email delay is editable under Admin → Marketing (runs in the
+  abandoned-cart cron).
 
 ## Launch checklist
 

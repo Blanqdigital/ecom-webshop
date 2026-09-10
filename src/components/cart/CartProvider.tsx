@@ -9,6 +9,7 @@ import {
 } from "react";
 import { track } from "@/lib/track";
 import { logFunnel } from "@/lib/analytics";
+import { InventoryProvider } from "@/components/inventory/InventoryProvider";
 
 export interface CartItem {
   slug: string;
@@ -126,7 +127,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     };
   }, [items, isOpen, hydrated]);
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <InventoryProvider>
+      <Ctx.Provider value={value}>{children}</Ctx.Provider>
+    </InventoryProvider>
+  );
 }
 
 export function useCart(): CartCtx {

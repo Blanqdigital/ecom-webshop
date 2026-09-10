@@ -7,6 +7,9 @@ import {
 import { sendAbandonedCartEmail } from "@/lib/email";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { saleState } from "@/lib/sale";
+import { runWelcomeFlow } from "@/lib/welcome-flow";
+import { getFlowTimings } from "@/lib/flow-settings";
+import { PRODUCTS } from "@/lib/products";
 
 /**
  * Abandoned-cart cron helpers. Kept separate so the route file can await
@@ -25,7 +28,8 @@ export async function run() {
   const { live, endsAt } = await saleState();
   if (!live) return { skipped: "sale ended", due: 0, sent: 0 };
 
-  const due = await dueAbandonedCarts(30, 100);
+  const timings = await getFlowTimings();
+  const due = await dueAbandonedCarts(timings.abandonedFirstMinutes, 100);
   let sent = 0;
   for (const c of due) {
     if (!c.consent) {
@@ -46,7 +50,10 @@ export async function run() {
     }
   }
 
-  const due2 = await dueSecondReminders(24, 100);
+  const due2 = await dueSecondReminders(
+    Math.max(1, Math.round(timings.abandonedSecondMinutes / 60)),
+    100,
+  );
   let sent2 = 0;
   for (const c of due2) {
     if (!c.consent) {
@@ -67,7 +74,8 @@ export async function run() {
     }
   }
 
-  return { due: due.length, sent, due2: due2.length, sent2 };
+  const welcome = await runWelcomeFlow();
+  return { due: due.length, sent, due2: due2.length, sent2, welcome };
 }
 
 export async function sweep(dry: boolean) {
@@ -139,10 +147,17 @@ export async function sweep(dry: boolean) {
 
 export async function testSend(email: string) {
   const { endsAt } = await saleState();
+  const sample = PRODUCTS[0];
   const res = await sendAbandonedCartEmail({
     email,
-    items: [{ slug: "baereslyngen", colorId: "aztec", qty: 1 }],
-    subtotal: 590,
+    items: [
+      {
+        slug: sample?.slug ?? "sample",
+        colorId: sample?.colors[0]?.id ?? "default",
+        qty: 1,
+      },
+    ],
+    subtotal: sample?.priceNok ?? 0,
     currency: "NOK",
     saleEndsAt: endsAt,
   });

@@ -1,5 +1,6 @@
 import { COMPANY } from "./company";
 import { unsubToken, type AbandonedItem } from "./abandoned";
+import { orderStatusUrl, orderTokensConfigured } from "./order-token";
 import {
   type OrderEmailData,
   type SendResult,
@@ -17,6 +18,7 @@ import {
 } from "./email-shared";
 
 export type { OrderEmailData, SendResult, EmailType } from "./email-shared";
+export { sendShippedEmail, sendWelcomeEmail } from "./email-flows";
 
 /** Send the admin new-order alert and the customer confirmation (best-effort). */
 export async function sendOrderEmails(o: OrderEmailData): Promise<void> {
@@ -26,10 +28,8 @@ export async function sendOrderEmails(o: OrderEmailData): Promise<void> {
   const total = money(o.amountTotal ?? 0, o.currency);
   const items = itemLines(o.items);
   const itemsText = itemLinesText(o.items);
-  // Replies to ordre@ would vanish; send them to the monitored inbox instead.
   const replyTo = COMPANY.email;
 
-  // Admin notification
   await send(key, {
     from,
     to: notifyTo,
@@ -60,9 +60,17 @@ export async function sendOrderEmails(o: OrderEmailData): Promise<void> {
     ),
   }, "order_admin");
 
-  // Customer confirmation
   if (o.email) {
     const firstName = o.name ? o.name.split(" ")[0] : "";
+    const statusUrl = orderTokensConfigured()
+      ? orderStatusUrl(o.id, COMPANY.url)
+      : null;
+    const statusText = statusUrl
+      ? `\n\nFølg bestillingen: ${statusUrl}`
+      : "";
+    const statusHtml = statusUrl
+      ? `<p style="margin:20px 0 0"><a href="${statusUrl}" style="display:inline-block;background:#1c1c1a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px">Følg bestillingen</a></p>`
+      : "";
     await send(key, {
       from,
       to: o.email,
@@ -70,7 +78,7 @@ export async function sendOrderEmails(o: OrderEmailData): Promise<void> {
       subject: `Takk for bestillingen din hos ${COMPANY.brand}`,
       text: textShell(
         "Takk for bestillingen!",
-        `Hei ${firstName}, vi har mottatt bestillingen din og pakker den snart. Du får sporing på e-post når den sendes.\n\nDin bestilling:\n${itemsText}\n\nFrakt: Gratis\nTotalt: ${total}\n\nSpørsmål? Svar på denne e-posten eller kontakt ${COMPANY.email}.`,
+        `Hei ${firstName}, vi har mottatt bestillingen din og pakker den snart. Du får sporing på e-post når den sendes.\n\nDin bestilling:\n${itemsText}\n\nFrakt: Gratis\nTotalt: ${total}${statusText}\n\nSpørsmål? Svar på denne e-posten eller kontakt ${COMPANY.email}.`,
       ),
       html: shell(
         "Takk for bestillingen!",
@@ -83,6 +91,7 @@ export async function sendOrderEmails(o: OrderEmailData): Promise<void> {
           <tr><td style="color:#8a8a84;padding:3px 0">Frakt</td><td style="text-align:right">Gratis</td></tr>
           <tr><td style="padding:3px 0;font-weight:600">Totalt</td><td style="text-align:right;font-weight:600">${total}</td></tr>
         </tbody></table>
+        ${statusHtml}
         <p style="font-size:13px;color:#8a8a84;margin-top:20px">Spørsmål? Svar på denne e-posten eller kontakt ${COMPANY.email}.</p>`,
       ),
     }, "order_confirmation");
@@ -94,19 +103,10 @@ export interface AbandonedEmailData {
   items: AbandonedItem[] | null;
   subtotal: number | null;
   currency: string;
-  /** Sale deadline (adds truthful urgency) or null when the sale is open-ended. */
   saleEndsAt: Date | null;
-  /** Flow step: 1 = first nudge (default), 2 = final "offer still stands". */
   step?: 1 | 2;
 }
 
-/**
- * Render an abandoned-cart flow email without sending it — shared by the
- * sender below and the admin Marketing tab's template previews.
- * Step 1: "Handlekurven venter på deg" — the first nudge, ~30 min after abandon.
- * Step 2: "Tilbudet ditt står fortsatt" — the FINAL email, ~24 h after step 1;
- *         explicitly says it's the last reminder.
- */
 export function buildAbandonedCartEmail(o: AbandonedEmailData): {
   subject: string;
   title: string;
@@ -182,12 +182,6 @@ export function buildAbandonedCartEmail(o: AbandonedEmailData): {
   return { subject, title, html, text, unsubUrl };
 }
 
-/**
- * Send an abandoned-cart flow email (step 1 or 2). Best-effort; returns whether
- * it was sent so the cron only stamps the sent-timestamp on success. Always
- * carries an unsubscribe link (markedsføringsloven), and only the cron decides
- * who is eligible (consent + live sale).
- */
 export async function sendAbandonedCartEmail(
   o: AbandonedEmailData,
 ): Promise<SendResult> {
@@ -201,8 +195,6 @@ export async function sendAbandonedCartEmail(
     from,
     to: o.email,
     subject,
-    // Replies go to the monitored inbox; and one-click unsubscribe (RFC 8058)
-    // so Gmail/Apple show a native "Unsubscribe" and trust the mail more.
     replyTo: COMPANY.email,
     headers: {
       "List-Unsubscribe": `<${unsubUrl}>`,

@@ -49,9 +49,6 @@ export const dateNo = (d: Date) =>
     minute: "2-digit",
   }).format(d);
 
-/** Absolute URL for a /public asset, so email clients can load it.
- *  WebP is swapped for JPEG: the site serves .webp, but Outlook on Windows
- *  can't render it, so email points at the .jpg twin generated alongside it. */
 export function emailImageUrl(path: string): string {
   if (!path) return "";
   const jpg = path.replace(/\.webp$/i, ".jpg");
@@ -59,9 +56,6 @@ export function emailImageUrl(path: string): string {
   return `${COMPANY.url}${jpg.startsWith("/") ? "" : "/"}${jpg}`;
 }
 
-/** Thumbnail cell for a variant, or an empty spacer when no image is known.
- *  Width/height are set as attributes AND inline styles for Outlook, which
- *  ignores CSS sizing on <img>. */
 export function thumbCell(c: ProductColor | undefined, alt: string): string {
   if (!c?.image) {
     return `<td width="56" style="width:56px"></td>`;
@@ -72,8 +66,6 @@ export function thumbCell(c: ProductColor | undefined, alt: string): string {
   </td>`;
 }
 
-/** Order/cart line items as table rows, each with the variant thumbnail.
- *  Rows are dropped into a `<table><tbody>…</tbody></table>` by the caller. */
 export function itemLines(items: OrderEmailData["items"]): string {
   const rows = (Array.isArray(items) ? items : []).map((it) => {
     const p = getProduct(it.slug ?? "");
@@ -118,12 +110,6 @@ export function shell(title: string, body: string): string {
   </div>`;
 }
 
-// --- Plain-text alternatives -------------------------------------------------
-// Every email ships a hand-written text/plain part alongside the HTML. Letting
-// Resend auto-derive it from the HTML tables produced run-on garbage, which
-// spam filters penalise; a clean text part improves inbox placement.
-
-/** Line items as plain text, one per line: "1 × Bæreslyngen — Sort". */
 export function itemLinesText(items: OrderEmailData["items"]): string {
   const rows = (Array.isArray(items) ? items : []).map((it) => {
     const p = getProduct(it.slug ?? "");
@@ -149,7 +135,6 @@ export function addressText(a: OrderEmailData["address"]): string {
     .join("\n");
 }
 
-/** Wrap a plain-text body with the same brand header + legal footer as shell(). */
 export function textShell(title: string, body: string): string {
   return `${COMPANY.brand}\n\n${title}\n\n${body}\n\n—\n${COMPANY.legalName} · Org.nr ${COMPANY.orgNr} · ${COMPANY.email}`;
 }
@@ -165,10 +150,10 @@ export type EmailType =
   | "order_confirmation"
   | "order_admin"
   | "cart_reminder"
-  | "cart_reminder_2";
+  | "cart_reminder_2"
+  | "order_shipped"
+  | "welcome_1";
 
-/** Record every outbound email in email_log for the admin Marketing tab.
- *  Best-effort: a missing table or DB hiccup must never block sending. */
 export async function logEmail(
   type: EmailType,
   p: { to: string; subject: string; html: string },
@@ -197,18 +182,14 @@ export async function send(
     to: string;
     subject: string;
     html: string;
-    /** Plain-text alternative — always set, for deliverability. */
     text?: string;
-    /** Where replies should go (we send from ordre@, replies want hei@). */
     replyTo?: string;
-    /** Extra SMTP headers, e.g. List-Unsubscribe on marketing mail. */
     headers?: Record<string, string>;
   },
   type: EmailType,
 ): Promise<SendResult> {
   let result: SendResult;
   try {
-    // Resend uses snake_case for reply_to; map our camelCase payload to it.
     const { replyTo, ...rest } = payload;
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",

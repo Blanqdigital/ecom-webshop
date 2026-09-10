@@ -32,7 +32,20 @@ alter table public.orders add column if not exists tracking_number text;
 alter table public.orders add column if not exists admin_note text;
 alter table public.orders add column if not exists updated_at timestamptz not null default now();
 
+-- Shipping automation. Paid orders can be mirrored into a fulfilment Shopify
+-- store; the supplier writes tracking back as a Shopify fulfillment.
+-- /api/webhooks/shopify fills tracking_* and emails the customer once.
+alter table public.orders add column if not exists shopify_order_id text;
+alter table public.orders add column if not exists tracking_url text;
+alter table public.orders add column if not exists tracking_company text;
+alter table public.orders add column if not exists locale text;
+alter table public.orders add column if not exists shipped_email_sent_at timestamptz;
+alter table public.orders add column if not exists shopify_order_number text;
+
 create index if not exists orders_created_at_idx on public.orders (created_at desc);
+create index if not exists orders_shopify_order_id_idx
+  on public.orders (shopify_order_id)
+  where shopify_order_id is not null;
 
 -- Lock the table down: only the service role (used by the webhook) can touch it.
 alter table public.orders enable row level security;
@@ -40,7 +53,7 @@ alter table public.orders enable row level security;
 -- bypasses RLS, so the webhook still writes fine.
 
 
--- BÆRA webshop — abandoned-checkout reminders.
+-- Abandoned-checkout reminders.
 -- A row is written (service-role) when a shopper enters their email at /kasse
 -- (/api/cart/track). The cron (/api/cron/abandoned-cart) emails carts that are
 -- >=30 min old, unconverted and un-reminded; recordOrder() marks a row
@@ -72,7 +85,7 @@ create index if not exists abandoned_carts_due_idx
 alter table public.abandoned_carts enable row level security;
 
 
--- BÆRA webshop — first-party funnel analytics.
+-- First-party funnel analytics.
 -- Anonymous, cookieless visitor events written server-side (service-role) from
 -- /api/analytics for the top of the funnel (PageView, AddToCart,
 -- InitiateCheckout). No PII/IP is stored — only a random first-party visitor id
@@ -100,7 +113,7 @@ create index if not exists funnel_events_name_created_idx
 alter table public.funnel_events enable row level security;
 
 
--- BÆRA webshop — outbound email log.
+-- Outbound email log.
 -- Every email the store sends (order confirmations, admin alerts, abandoned-
 -- cart reminders) is recorded here by lib/email.ts, including the rendered
 -- HTML, so the admin "Marketing" tab can show what was sent and preview it.
@@ -156,6 +169,18 @@ create table if not exists public.store_settings (
 
 -- Same lockdown as orders: service-role only, no public policies.
 alter table public.store_settings enable row level security;
+
+
+-- JSON settings (inventory counts, email flow timings). Separate from
+-- store_settings (string values) so jsonb payloads stay typed.
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.app_settings enable row level security;
+-- No policies = service-role only.
 
 
 -- Store to-dos — the setup/launch checklist managed from the admin "To-do"
