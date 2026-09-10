@@ -1,9 +1,11 @@
 import crypto from "crypto";
 import { getTrackingId } from "@/lib/settings";
+import { getIntegration } from "@/lib/integrations";
 
 // Meta Conversions API (server-side events). Sends a server copy of browser
 // pixel events straight to Meta, deduplicated with the browser pixel via a
-// shared event_id. No-ops if META_CAPI_ACCESS_TOKEN is not configured.
+// shared event_id. No-ops if meta_capi_access_token is not configured
+// (env or Admin → Integrations).
 const GRAPH_VERSION = "v21.0";
 
 /** Meta requires user identifiers to be SHA-256 hashed (normalized first). */
@@ -43,7 +45,7 @@ interface CapiEvent {
 
 /** Send any standard e-commerce event to the Conversions API. */
 export async function sendCapiEvent(e: CapiEvent): Promise<void> {
-  const token = process.env.META_CAPI_ACCESS_TOKEN;
+  const token = (await getIntegration("meta_capi_access_token")).trim();
   if (!token) return; // not configured yet — no-op
   // Pixel ID comes from the admin Settings tab (env var overrides).
   const pixelId = await getTrackingId("meta_pixel_id");
@@ -81,8 +83,9 @@ export async function sendCapiEvent(e: CapiEvent): Promise<void> {
     ],
   };
   // Optional: route to Events Manager "Test events" while validating.
-  if (process.env.META_CAPI_TEST_EVENT_CODE) {
-    body.test_event_code = process.env.META_CAPI_TEST_EVENT_CODE;
+  const testCode = (await getIntegration("meta_capi_test_event_code")).trim();
+  if (testCode) {
+    body.test_event_code = testCode;
   }
 
   try {
