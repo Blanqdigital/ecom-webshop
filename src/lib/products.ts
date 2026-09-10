@@ -1,3 +1,10 @@
+// =============================================================================
+// SAMPLE CATALOGUE — replace this entire file when spinning up a new store.
+// The demo product (slug "baereslyngen") keeps existing routes/images working
+// out of the box. Swap slug, copy, prices, colours, and public/images/ before
+// launch. See docs/SETUP.md.
+// =============================================================================
+
 export interface ProductColor {
   id: string;
   name: string;
@@ -20,6 +27,7 @@ export interface Product {
   gallery?: { src: string; alt: string }[];
 }
 
+/** Demo single-SKU product shipped with the template (Norwegian example). */
 export const SLING: Product = {
   slug: "baereslyngen",
   name: "Bæreslyngen",
@@ -55,11 +63,11 @@ export const SLING: Product = {
     },
     {
       src: "/images/explain-vs.jpg",
-      alt: "BÆRA bæreslyngen mot andre bæreseler: frie hender, får plass i vesken, på i 5 sekunder",
+      alt: "Demo bæreslyngen mot andre bæreseler: frie hender, får plass i vesken, på i 5 sekunder",
     },
     {
       src: "/images/explain-comparison.jpg",
-      alt: "Sammenligning: vanlig bæresele med masete stropper mot BÆRA bæreslyngen som er på i 5 sekunder",
+      alt: "Sammenligning: vanlig bæresele med masete stropper mot demo bæreslyngen som er på i 5 sekunder",
     },
     {
       src: "/images/lifestyle-street.jpg",

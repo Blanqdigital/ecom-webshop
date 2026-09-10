@@ -18,8 +18,9 @@ Use this template on GitHub ("Use this template" → new repo), clone it, and
 | File | What |
 |---|---|
 | `src/lib/company.ts` | Brand name, legal entity, org.nr, address, support email/phone, canonical URL. **Marked EDIT FIRST.** |
-| `src/lib/products.ts` | Product(s), colours/variants, prices, images. |
-| `src/lib/offers.ts` | Order bump / BOGO offer config. |
+| `src/lib/site.ts` | Canonical site URL, brand name, language / country / currency for SEO. |
+| `src/lib/products.ts` | Product(s), colours/variants, prices, images. Ships as a **sample** catalogue. |
+| `src/lib/offers.ts` | Order bump / BOGO offer config (sample). |
 | `public/images/` | Replace all product + explainer images. |
 | Storefront copy | Homepage, product page, FAQ, emails — per-store work; the template ships the Norwegian single-product example. |
 
@@ -28,8 +29,9 @@ image-carousel cadence, headline formula (outcome + timeframe + mechanism,
 ≥4/7 checklist), benefit bullets, offer tiers, section order, FAQ sourcing.
 Don't freestyle the page structure.
 
-Grep for the old brand before launch: `grep -ri "yourbrand" src/` should be
-the only thing left.
+Grep for leftover placeholders before launch:
+`grep -ri "yourshop\\|YOUR BRAND\\|yourbrand" src/` should only hit intentional
+samples you still need to replace.
 
 ## 3. Supabase
 
@@ -51,9 +53,9 @@ env.
 
 Import the repo, paste every var from `.env.example`, deploy.
 
-- **Team: always "Xander Dijkstra's projects"** (`xander-dijkstras-projects`),
-  never Darkwing. When using the CLI, pass
-  `--scope xander-dijkstras-projects` and verify the project landed there.
+- Deploy into the **Blanq / team account that owns this store** (pass the right
+  `--scope` on the CLI). Do not assume a personal Hobby team from an older
+  playbook note.
 
 - **Never add sub-daily crons to `vercel.json` on Hobby** — it silently blocks
   ALL deploys (no deployment records at all). Scheduling lives in GitHub
@@ -66,7 +68,7 @@ The two workflows (`abandoned-cart` every 15 min, `weekly-report` Fridays)
 need, per repo:
 
 ```
-gh variable set SITE_URL    --body "https://www.yourshop.com"
+gh variable set SITE_URL    --body "https://www.yourshop.example"
 gh secret   set CRON_SECRET --body "<same value as the Vercel CRON_SECRET>"
 ```
 
@@ -85,12 +87,14 @@ in test mode and only mails your own address. Send-only domains can't
 Log in to `/admin` → **Settings → Tracking** and paste the IDs. No code, no
 redeploy — live within ~5 minutes (edge cache):
 
-- **Meta Pixel ID** — browser pixel only, by design (simple, single-source;
-  the Conversions API layer was deliberately removed). All standard events
-  fire from code: PageView, ViewContent, AddToCart, InitiateCheckout, and
-  Purchase on /takk. Verify with the Meta Pixel Helper extension or Events
-  Manager → Test events — never with the "Event Setup Tool" (that's for
-  sites without coded events and breaks the page render).
+- **Meta Pixel ID** — browser pixel. All standard events fire from code:
+  PageView, ViewContent, AddToCart, InitiateCheckout, and Purchase on /takk.
+  Verify with the Meta Pixel Helper extension or Events Manager → Test events
+  — never with the "Event Setup Tool" (that's for sites without coded events
+  and breaks the page render).
+- **Meta Conversions API (optional)** — set `META_CAPI_ACCESS_TOKEN` (and
+  optionally `META_CAPI_TEST_EVENT_CODE`) to send server-side events deduped
+  with the browser pixel via `event_id`. No-ops until configured.
 - **Google tag** — GA4 `G-…`, Ads `AW-…` or `GT-…`.
 - **Microsoft Clarity** project ID. Also set `CLARITY_API_TOKEN` in Vercel
   (Clarity → Settings → Data export) to light up the Clarity panel in
