@@ -8,12 +8,14 @@ import {
   GROUPS,
 } from "./integrationsFields";
 import { ShopifyWebhooksCard } from "./ShopifyWebhooksCard";
+import { ConnectionChecks } from "./ConnectionChecks";
 
 interface IntegrationStatus {
   configured: boolean;
   envOverride: boolean;
   value?: string;
   masked?: string;
+  storage?: string;
 }
 
 export function Integrations({ token }: { token: string }) {
@@ -91,7 +93,7 @@ export function Integrations({ token }: { token: string }) {
         }
         return next;
       });
-      setMessage("Saved - live within ~60s on warm instances (cache TTL).");
+      setMessage("Saved. Connection has not been tested. Changes apply within 60 seconds.");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -103,10 +105,10 @@ export function Integrations({ token }: { token: string }) {
     <div className="mx-auto max-w-3xl space-y-6">
       <Card className="p-5">
         <p className="text-[13.5px] leading-relaxed text-[#6b6b66]">
-          Paste API keys and config here - stored in{" "}
-          <code className="rounded bg-[#eee] px-1 py-0.5 text-[12px]">store_settings</code>{" "}
-          (service-role only). Env vars always win and lock the field. Bootstrap secrets
-          (Supabase, ADMIN_EMAILS, CRON_SECRET, webhook secrets) stay in Vercel.
+          Save credentials here, then test each connection. Secrets are encrypted using
+          the hosting encryption key. Environment overrides lock the corresponding field.
+          Saving a value does not verify payments, delivery or fulfilment.
+
         </p>
       </Card>
 
@@ -178,6 +180,8 @@ export function Integrations({ token }: { token: string }) {
                           className="w-full rounded-lg border border-[#e2e2dd] px-3 py-2 text-[13.5px] text-ink outline-none transition-colors focus:border-ink disabled:bg-[#f3f3ef] disabled:text-[#8a8a84]"
                         />
                       )}
+                      {st?.storage === "legacy" && <p className="text-sm text-amber-700">Legacy plaintext value. Enter it again and save to encrypt it.</p>}
+                      {st?.storage === "unreadable" && <p className="text-sm text-red-700">Cannot decrypt this value. Restore the hosting encryption key.</p>}
                       {f.hint && <p className="mt-1 text-[11.5px] text-[#a3a39c]">{f.hint}</p>}
                       {isSecret && !locked && (
                         <p className="mt-1 text-[11px] text-[#a3a39c]">
@@ -192,6 +196,7 @@ export function Integrations({ token }: { token: string }) {
           ))}
 
           <ShopifyWebhooksCard token={token} />
+          <ConnectionChecks token={token} />
 
           <div className="flex items-center gap-3 pb-8">
             <button

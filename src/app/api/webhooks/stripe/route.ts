@@ -24,8 +24,9 @@ export async function POST(req: Request) {
     );
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
     const s = event.data.object as Stripe.Checkout.Session;
+    if (s.payment_status !== "paid" || !s.metadata?.cart) return NextResponse.json({ received: true });
     await recordOrder({
       id: s.id,
       email: s.customer_details?.email ?? null,
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
     });
   } else if (event.type === "payment_intent.succeeded") {
     const pi = event.data.object as Stripe.PaymentIntent;
+    if (!pi.metadata?.cart) return NextResponse.json({ received: true });
     await recordOrder({
       id: pi.id,
       email: pi.receipt_email ?? null,

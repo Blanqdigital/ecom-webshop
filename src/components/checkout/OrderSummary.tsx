@@ -1,5 +1,6 @@
 "use client";
 
+import { COMMERCE } from "@/lib/commerce";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -96,14 +97,14 @@ export function OrderSummary({
         ))}
       </div>
 
-      <div className="mt-5">
+      {COMMERCE.orderBumpEnabled && <div className="mt-5">
         <BumpBox
           on={bumpOn}
           colorId={bumpColorId}
           onToggle={onBumpToggle}
           onColorChange={onBumpColorChange}
         />
-      </div>
+      </div>}
 
       {/* Coupon code */}
       <div className="mt-6 border-t border-line pt-5">
@@ -179,7 +180,7 @@ export function OrderSummary({
       </div>
 
       <p className="mt-4 text-center text-[12px] leading-relaxed text-faint">
-        Fri frakt · 90 dagers åpent kjøp · Trygg, kryptert betaling
+        Fri frakt · Se butikkens returvilkår · Trygg, kryptert betaling
       </p>
     </div>
   );

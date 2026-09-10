@@ -62,8 +62,8 @@ export async function sendOrderEmails(o: OrderEmailData): Promise<void> {
 
   if (o.email) {
     const firstName = o.name ? o.name.split(" ")[0] : "";
-    const statusUrl = orderTokensConfigured()
-      ? orderStatusUrl(o.id, COMPANY.url)
+    const statusUrl = (await orderTokensConfigured())
+      ? await orderStatusUrl(o.id, COMPANY.url)
       : null;
     const statusText = statusUrl
       ? `\n\nFølg bestillingen: ${statusUrl}`

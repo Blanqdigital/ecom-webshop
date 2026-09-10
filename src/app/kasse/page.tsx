@@ -1,3 +1,5 @@
+import { COMPANY, companyOrgNr } from "@/lib/company";
+import { SITE } from "@/lib/site";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckoutPage } from "@/components/checkout/CheckoutPage";
@@ -17,7 +19,7 @@ export default function Kasse() {
             href="/"
             className="font-serif text-[26px] tracking-[0.04em] text-ink"
           >
-            BÆRA
+            {SITE.name}
           </Link>
           <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
             <svg
@@ -42,7 +44,7 @@ export default function Kasse() {
       {/* Minimal footer — trust + legal, no nav distractions */}
       <footer className="border-t border-line">
         <div className="mx-auto flex max-w-[1080px] flex-col items-center justify-between gap-3 px-5 py-6 text-[12.5px] text-muted sm:flex-row sm:px-7">
-          <span>© FX MEDIA AS · Org.nr 930 724 548 MVA</span>
+          <span>© {COMPANY.legalName} · Org.nr {companyOrgNr()}</span>
           <div className="flex gap-5">
             <Link href="/personvern" className="hover:text-ink">
               Personvern

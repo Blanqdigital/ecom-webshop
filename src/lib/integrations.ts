@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { decryptSecret, encryptSecret, isEncryptedSecret, secretStorageConfigured } from "./secret-storage";
 
 // Store integration secrets + config in `store_settings`, editable from
 // /admin → Integrations. Env vars (when set) ALWAYS win. Server-only —
@@ -19,8 +20,6 @@ export const SECRET_KEYS = [
   "shopify_webhook_secret",
   "order_token_secret",
   "post_purchase_token_secret",
-  "meta_capi_access_token",
-  "meta_capi_test_event_code",
   "clarity_api_token",
 ] as const;
 
@@ -61,8 +60,6 @@ const ENV_OVERRIDE: Record<IntegrationKey, string | undefined> = {
     process.env.SHOPIFY_WEBHOOK_SECRET || process.env.SHOPIFY_API_SECRET,
   order_token_secret: process.env.ORDER_TOKEN_SECRET,
   post_purchase_token_secret: process.env.POST_PURCHASE_TOKEN_SECRET,
-  meta_capi_access_token: process.env.META_CAPI_ACCESS_TOKEN,
-  meta_capi_test_event_code: process.env.META_CAPI_TEST_EVENT_CODE,
   clarity_api_token: process.env.CLARITY_API_TOKEN,
   order_from: process.env.ORDER_FROM,
   order_notify_to: process.env.ORDER_NOTIFY_TO,
@@ -80,6 +77,7 @@ export interface IntegrationStatus {
   value?: string;
   /** Secrets only — masked hint when a value is set. */
   masked?: string;
+  storage?: "environment" | "encrypted" | "legacy" | "empty" | "unreadable";
 }
 
 // Tiny in-memory cache (same shape as settings.ts).
@@ -129,7 +127,8 @@ function maskSecret(value: string): string {
  */
 export async function getIntegration(key: IntegrationKey): Promise<string> {
   const env = envValue(key);
-  let value = env || (await dbValues())[key] || "";
+  const stored = env ? "" : (await dbValues())[key] || "";
+  let value = env || (SECRET_SET.has(key) && stored ? decryptSecret(key, stored) : stored);
   if (key === "stripe_secret_key" || key === "stripe_publishable_key") {
     value = value.replace(/[^\x21-\x7e]/g, "");
   }
@@ -163,10 +162,17 @@ export async function getIntegrationStatus(): Promise<
     const resolved = env || dbVal;
     const envOverride = !!env;
     if (SECRET_SET.has(key)) {
+      let readable = resolved;
+      try { if (!env && dbVal) readable = decryptSecret(key, dbVal); }
+      catch {
+        out[key] = { configured: false, envOverride, storage: "unreadable" };
+        continue;
+      }
       out[key] = {
-        configured: !!resolved,
+        configured: !!readable,
         envOverride,
-        ...(resolved ? { masked: maskSecret(resolved) } : {}),
+        storage: env ? "environment" : !dbVal ? "empty" : isEncryptedSecret(dbVal) ? "encrypted" : "legacy",
+        ...(readable ? { masked: maskSecret(readable) } : {}),
       };
     } else {
       out[key] = {
@@ -190,12 +196,18 @@ export async function saveIntegrations(
   const supabase = getSupabaseAdmin();
   if (!supabase) return { ok: false, error: "Database isn't configured." };
 
+  if (Object.entries(updates).some(([key, value]) => SECRET_SET.has(key) && value?.trim() && !envValue(key as IntegrationKey)) && !secretStorageConfigured()) {
+    return { ok: false, error: "Configure INTEGRATIONS_ENCRYPTION_KEY before saving secrets." };
+  }
+
   for (const key of INTEGRATION_KEYS) {
     const raw = updates[key];
     if (typeof raw !== "string") continue;
     // Never overwrite a value that's locked by an env var.
     if (envValue(key)) continue;
-    const value = raw.trim().slice(0, 2000);
+    if (raw.trim().length > 2000) return { ok: false, error: "Integration value exceeds 2,000 characters." };
+    const plain = raw.trim();
+    const value = plain && SECRET_SET.has(key) ? encryptSecret(key, plain) : plain;
     const res = value
       ? await supabase
           .from("store_settings")

@@ -19,7 +19,7 @@ export async function GET() {
     { ...tracking, ...payment },
     {
       headers: {
-        "cache-control": "public, s-maxage=300, stale-while-revalidate=3600",
+        "cache-control": "no-store",
       },
     },
   );

@@ -1,6 +1,6 @@
 // Free-shipping threshold in NOK. Kept in sync with the storefront copy
 // ("Fri frakt over 500 kr") and the salgsvilkår page. Change in one place.
-export const FREE_SHIPPING_THRESHOLD = 500;
+export const FREE_SHIPPING_THRESHOLD = 0;
 
 /** Progress (0-1) toward free shipping for a given subtotal. */
 export function freeShippingProgress(subtotal: number): number {

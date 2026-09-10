@@ -1,5 +1,6 @@
 import { getProduct } from "./products";
 import { ORDER_BUMP, bumpUnitPriceNok } from "./offers";
+import { COMMERCE } from "./commerce";
 
 // Shared server-side cart pricing. Both checkout backends (Stripe Payment
 // Element and Vipps ePayment) price the cart HERE from the catalogue — client
@@ -57,13 +58,19 @@ export function priceCart(
   items: PriceReqItem[],
   bump?: BumpInput | null,
 ): PricedCart {
-  if (!Array.isArray(items) || items.length === 0) {
+  if (!Array.isArray(items) || items.length === 0 || items.length > 20) {
     throw new PricingError("Handlekurven er tom.");
   }
 
-  let freeAllowance = items
-    .filter((it) => !it.free)
-    .reduce((sum, it) => sum + clampQty(it.qty), 0);
+  const freeAllowance = new Map<string, number>();
+  for (const it of items) {
+    if (!it || typeof it !== "object" || !Number.isInteger(it.qty) || it.qty < 1 || it.qty > 99) {
+      throw new PricingError("Ugyldig antall i handlekurven.");
+    }
+    if (!it.free && COMMERCE.bogoSlugs.includes(it.slug)) {
+      freeAllowance.set(it.slug, (freeAllowance.get(it.slug) ?? 0) + it.qty);
+    }
+  }
 
   let amountOre = 0;
   const cartMeta: PricedCart["cartMeta"] = [];
@@ -77,19 +84,19 @@ export function priceCart(
     }
 
     if (it.free) {
-      const granted = Math.min(qty, freeAllowance);
-      freeAllowance -= granted;
+      const granted = Math.min(qty, freeAllowance.get(it.slug) ?? 0);
+      freeAllowance.set(it.slug, (freeAllowance.get(it.slug) ?? 0) - granted);
       const remainder = qty - granted;
       if (remainder > 0) amountOre += product.priceNok * 100 * remainder;
     } else {
       amountOre += product.priceNok * 100 * qty;
     }
-    cartMeta.push({ slug: product.slug, colorId: color.id, qty: it.qty });
+    cartMeta.push({ slug: product.slug, colorId: color.id, qty });
   }
 
   // Order bump: append one discounted extra unit to the same payment. A bad
   // colour is ignored (never fail the whole checkout over the add-on).
-  if (bump) {
+  if (bump && COMMERCE.orderBumpEnabled) {
     const product = getProduct(ORDER_BUMP.slug);
     const color = product?.colors.find((c) => c.id === bump.colorId);
     if (product && color) {
@@ -99,6 +106,6 @@ export function priceCart(
   }
 
   if (amountOre <= 0) throw new PricingError("Ugyldig handlekurv.");
+  if (JSON.stringify(cartMeta).length > 480) throw new PricingError("For mange varianter i handlekurven.");
   return { amountOre, cartMeta };
 }
-

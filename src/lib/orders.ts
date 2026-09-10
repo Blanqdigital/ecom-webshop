@@ -1,20 +1,12 @@
 import { getSupabaseAdmin } from "./supabase";
-import { sendCapiPurchase } from "./capi";
 import { sendOrderEmails } from "./email";
 import { sendTelegramOrder } from "./telegram";
 import { createShopifyOrder } from "./shopify";
 import { markCartConverted } from "./abandoned";
-import { PRODUCTS } from "./products";
-import { SITE } from "./site";
 
 // Shared order-recording pipeline. Both the Stripe webhook and the Vipps flow
 // normalise their provider payload into an OrderInput and call recordOrder().
-// It persists the order (dedup + upsert), fires the Meta CAPI Purchase, and
-// sends the admin + customer emails — exactly once per order. The browser
-// pixel on /takk fires the same Purchase with the same event id, so Meta
-// dedupes the pair; the server copy is the one that survives closed tabs and
-// ad blockers (re-added 2026-07-13 after purchase-optimized ads had zero
-// attributable results).
+// Persist before downstream effects; failures propagate so providers retry.
 
 /** Provider-agnostic delivery address (superset of Stripe.Address / Vipps). */
 export interface OrderAddress {
@@ -48,6 +40,7 @@ export interface OrderInput {
 /** Persist a paid order (when a DB is configured) and send notifications. */
 export async function recordOrder(o: OrderInput) {
   const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error("Order database is not configured");
   const order = {
     stripe_session_id: o.id,
     email: o.email,
@@ -60,51 +53,24 @@ export async function recordOrder(o: OrderInput) {
     items: safeParse(o.cart),
   };
 
-  // Webhooks / return-URL finalisation can deliver more than once; only email
-  // on the first sighting.
-  let isNew = true;
-  if (supabase) {
-    const { data: existing } = await supabase
-      .from("orders")
-      .select("id")
-      .eq("stripe_session_id", o.id)
-      .maybeSingle();
-    isNew = !existing;
-
-    const { error } = await supabase
-      .from("orders")
-      .upsert(order, { onConflict: "stripe_session_id" });
-    if (error) {
-      console.error("[orders] insert failed:", error.message);
-      // Swallow so the provider doesn't retry forever on a schema issue.
-    }
-  } else {
-    console.log("[orders] paid order (no DB configured):", order);
+  // The unique provider reference arbitrates concurrent webhook deliveries.
+  // Ignore duplicate inserts instead of a racy read-then-upsert check.
+  const { data: inserted, error } = await supabase.from("orders")
+    .upsert(order, { onConflict: "stripe_session_id", ignoreDuplicates: true })
+    .select("id");
+  if (error) throw new Error("Order persistence failed; payment provider must retry");
+  let isNew = (inserted?.length ?? 0) > 0;
+  if (!isNew && order.payment_status === "paid") {
+    const { data: transitioned, error: transitionError } = await supabase.from("orders")
+      .update(order).eq("stripe_session_id", o.id).neq("payment_status", "paid").select("id");
+    if (transitionError) throw new Error("Order payment transition failed");
+    isNew = (transitioned?.length ?? 0) > 0;
   }
 
   // A paid order clears any pending abandoned-checkout reminder for this email
   // (idempotent, so safe on webhook re-delivery).
   if (order.payment_status === "paid") {
     await markCartConverted(order.email);
-  }
-
-  // Meta Conversions API: server-side Purchase, deduplicated with the browser
-  // pixel via the order id as event_id. Only on the first sighting so webhook
-  // retries never inflate the count. Best-effort — no-ops without a token.
-  if (isNew && order.payment_status === "paid") {
-    await sendCapiPurchase({
-      eventId: o.id,
-      value: order.amount_total ?? 0,
-      currency: order.currency,
-      contentIds: cartSlugs(order.items),
-      eventSourceUrl: `${SITE.url}/takk`,
-      user: {
-        email: order.email,
-        phone: order.phone,
-        fbp: o.fbp,
-        fbc: o.fbc,
-      },
-    });
   }
 
   // Notifications (admin email + customer confirmation + Telegram) — only on
@@ -164,22 +130,6 @@ export async function recordOrder(o: OrderInput) {
       }
     }
   }
-}
-
-/** Product slugs from the stored cart, for CAPI content_ids. */
-function cartSlugs(items: unknown): string[] {
-  const fallback = PRODUCTS[0]?.slug ? [PRODUCTS[0].slug] : [];
-  if (!Array.isArray(items)) return fallback;
-  const slugs = [
-    ...new Set(
-      items
-        .map((i) =>
-          i && typeof i === "object" ? (i as { slug?: string }).slug : null,
-        )
-        .filter((s): s is string => typeof s === "string"),
-    ),
-  ];
-  return slugs.length ? slugs : fallback;
 }
 
 function safeParse(v: string | undefined) {

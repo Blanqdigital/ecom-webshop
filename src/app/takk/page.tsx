@@ -133,8 +133,8 @@ export default async function ThankYouPage({
   });
 
   const statusUrl =
-    purchase && orderTokensConfigured()
-      ? orderStatusUrl(purchase.orderId, COMPANY.url)
+    purchase && (await orderTokensConfigured())
+      ? await orderStatusUrl(purchase.orderId, COMPANY.url)
       : null;
 
   return (

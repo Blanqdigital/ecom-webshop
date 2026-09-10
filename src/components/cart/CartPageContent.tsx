@@ -18,7 +18,7 @@ export function CartPageContent() {
         <div className="flex flex-col items-center gap-4 rounded-lg border border-line bg-linen py-[70px] text-center">
           <p className="text-[16px] text-muted">Handlekurven er tom.</p>
           <Link
-            href="/baereslyngen"
+            href="/"
             className="rounded-full bg-ink px-8 py-[14px] text-[15px] font-semibold text-cream transition-colors hover:bg-clay"
           >
             Se Bæreslyngen
@@ -108,7 +108,7 @@ export function CartPageContent() {
           ))}
 
           <Link
-            href="/baereslyngen"
+            href="/"
             className="mt-6 inline-block text-[14px] font-semibold text-clay hover:underline"
           >
             ← Fortsett å handle

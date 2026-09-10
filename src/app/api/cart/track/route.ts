@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
   // The email must belong to someone actually at our checkout with an open PI.
   try {
-    const pi = await getStripe().paymentIntents.retrieve(paymentIntentId);
+      const pi = await (await getStripe()).paymentIntents.retrieve(paymentIntentId);
     if (pi.status === "succeeded" || pi.status === "canceled") {
       return NextResponse.json({ ok: false });
     }

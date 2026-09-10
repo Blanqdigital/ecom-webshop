@@ -13,7 +13,7 @@ const SETUP_CHECKLIST = [
   "Supabase: new project, run all of supabase/schema.sql",
   "Vercel: set bootstrap env (Supabase URL/anon/service-role, ADMIN_EMAILS, CRON_SECRET, STRIPE_WEBHOOK_SECRET) and deploy",
   "GitHub: gh variable set SITE_URL + gh secret set CRON_SECRET (Actions crons)",
-  "Admin → Integrations: paste Stripe keys, Resend, Vipps, Telegram, Shopify, Meta CAPI, Clarity API (env still wins if set)",
+  "Admin → Integrations: paste Stripe keys, Resend, Vipps, Telegram, Shopify, Clarity API (env still wins if set)",
   "Stripe: webhook → /api/webhooks/stripe with checkout.session.completed AND payment_intent.succeeded",
   "Resend: verify domain; set From + notify in Integrations; create a real support mailbox",
   "Paste Meta Pixel / Google Tag / Clarity IDs in Settings → Tracking",

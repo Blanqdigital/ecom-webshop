@@ -20,8 +20,7 @@ export function authorized(req: Request): boolean {
   if (!secret) return false; // fail closed until configured
   const auth = req.headers.get("authorization") ?? "";
   const bearer = /^bearer /i.test(auth) ? auth.slice(7).trim() : "";
-  const key = new URL(req.url).searchParams.get("key") ?? "";
-  return bearer === secret || key === secret;
+  return bearer === secret;
 }
 
 export async function run() {

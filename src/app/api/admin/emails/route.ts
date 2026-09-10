@@ -1,3 +1,4 @@
+import { PRODUCTS } from "@/lib/products";
 import { NextResponse } from "next/server";
 import { authenticateAdmin, getSupabaseAdmin } from "@/lib/supabase";
 import { buildAbandonedCartEmail } from "@/lib/email";
@@ -24,13 +25,10 @@ export async function GET(req: Request) {
   if (template === "cart_reminder" || template === "cart_reminder_2") {
     const { subject, html } = buildAbandonedCartEmail({
       email: "kunde@example.com",
-      items: [
-        { slug: "baereslyngen", colorId: "sort", qty: 1 },
-        { slug: "baereslyngen", colorId: "aztec", qty: 1, free: true },
-      ],
-      subtotal: 590,
+      items: [{ slug: PRODUCTS[0].slug, colorId: PRODUCTS[0].colors[0].id, qty: 1 }],
+      subtotal: PRODUCTS[0].priceNok,
       currency: "NOK",
-      saleEndsAt: saleState().endsAt,
+      saleEndsAt: (await saleState()).endsAt,
       step: template === "cart_reminder_2" ? 2 : 1,
     });
     return NextResponse.json({ email: { subject, html } });

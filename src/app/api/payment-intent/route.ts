@@ -1,3 +1,5 @@
+import { COMMERCE } from "@/lib/commerce";
+import { getSupabaseAdmin as orderDatabase } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { priceCart, parseBump, PricingError } from "@/lib/pricing";
@@ -12,6 +14,7 @@ export const dynamic = "force-dynamic";
  * client amounts are never trusted.
  */
 export async function POST(req: Request) {
+  if (!COMMERCE.checkoutEnabled || !orderDatabase()) return NextResponse.json({ error: "Butikken er ikke åpen for bestilling ennå." }, { status: 503 });
   let stripe;
   try {
     stripe = await getStripe();

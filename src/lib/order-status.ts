@@ -33,7 +33,7 @@ export function trackingHref(v: {
 export async function getOrderStatus(
   token: string,
 ): Promise<OrderStatusData | null> {
-  const reference = readOrderToken(token);
+  const reference = await readOrderToken(token);
   if (!reference) return null;
 
   const supabase = getSupabaseAdmin();

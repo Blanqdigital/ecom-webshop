@@ -12,10 +12,12 @@ import { getProduct } from "./products";
 import { bumpUnitPriceNok } from "./offers";
 import { getIntegration } from "./integrations";
 
-const API_VERSION = "2024-10";
+import { SHOPIFY_API_VERSION as API_VERSION, validShopifyDomain } from "./shopify-config";
 
 async function shopDomain(): Promise<string> {
-  return (await getIntegration("shopify_store_domain")).trim();
+  const domain = (await getIntegration("shopify_store_domain")).trim();
+  if (!validShopifyDomain(domain)) throw new Error("Use the exact myshopify.com store domain");
+  return domain;
 }
 
 export async function shopifyConfigured(): Promise<boolean> {
@@ -43,6 +45,8 @@ export async function shopifyGraphql<T = unknown>(
       `https://${await shopDomain()}/admin/api/${API_VERSION}/graphql.json`,
       {
         method: "POST",
+        redirect: "error",
+        signal: AbortSignal.timeout(15000),
         headers: {
           "content-type": "application/json",
           "X-Shopify-Access-Token": token,

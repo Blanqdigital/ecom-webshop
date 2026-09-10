@@ -1,22 +1,22 @@
 @import "tailwindcss";
 
-/* BÆRA design tokens (from the Claude Design artifact). */
+/* Neutral starter tokens. Define a distinct visual direction per store. */
 @theme inline {
-  --color-cream: #f4efe6; /* page background */
-  --color-sand: #ede3d2; /* alternating bands */
-  --color-linen: #fbf8f1; /* cards */
-  --color-ink: #2a2622; /* primary text / dark sections */
+  --color-cream: #ffffff; /* page background */
+  --color-sand: #eef2f6; /* alternating bands */
+  --color-linen: #f8fafc; /* cards */
+  --color-ink: #172033; /* primary text / dark sections */
   --color-ink-soft: #3c3833;
-  --color-clay: #be7e5e; /* primary accent */
+  --color-clay: #2563eb; /* primary accent */
   --color-clay-soft: #c99b82;
-  --color-line: #e1d8c8; /* hairline borders */
+  --color-line: #dbe2ea; /* hairline borders */
   --color-muted: #6e675e;
   --color-muted-2: #55504a;
   --color-faint: #9a938a;
-  --color-cream-text: #ede3d2; /* text on dark */
+  --color-cream-text: #eef2f6; /* text on dark */
 
   --font-sans: var(--font-grotesk);
-  --font-serif: var(--font-instrument);
+  --font-serif: var(--font-grotesk);
 }
 
 html,

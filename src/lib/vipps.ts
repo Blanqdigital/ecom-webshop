@@ -17,9 +17,9 @@ const PROD_BASE = "https://api.vipps.no";
 
 // Identifies our integration to Vipps (recommended on every request).
 const SYSTEM_HEADERS: Record<string, string> = {
-  "Vipps-System-Name": "baera",
+  "Vipps-System-Name": "ecom-webshop",
   "Vipps-System-Version": "1.0.0",
-  "Vipps-System-Plugin-Name": "baera-nextjs",
+  "Vipps-System-Plugin-Name": "ecom-nextjs",
   "Vipps-System-Plugin-Version": "1.0.0",
 };
 

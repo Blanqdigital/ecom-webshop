@@ -1,4 +1,6 @@
 import "server-only";
+import { getIntegration } from "./integrations";
+import { COMMERCE } from "./commerce";
 
 import { createHmac, timingSafeEqual } from "crypto";
 import type Stripe from "stripe";
@@ -17,6 +19,7 @@ function buildOfferConfig(): Record<
   string,
   { colorId: string; discountPercent: number; kind: "bump" | "extra" }
 > {
+  if (!COMMERCE.postPurchaseEnabled) return {};
   const sample = PRODUCTS[0];
   if (!sample?.colors[0]) return {};
   const config: Record<
@@ -45,10 +48,10 @@ function buildOfferConfig(): Record<
 
 export type PostPurchaseOfferSlug = string;
 
-function tokenSecret(): string {
+async function tokenSecret(): Promise<string> {
   const value = (
-    process.env.POST_PURCHASE_TOKEN_SECRET?.trim() ||
-    process.env.ORDER_TOKEN_SECRET?.trim() ||
+    (await getIntegration("post_purchase_token_secret")) ||
+    (await getIntegration("order_token_secret")) ||
     process.env.EMAIL_UNSUB_SECRET?.trim() ||
     process.env.CRON_SECRET?.trim() ||
     process.env.STRIPE_WEBHOOK_SECRET?.trim() ||
@@ -57,24 +60,24 @@ function tokenSecret(): string {
   return value.replace(/[^\x21-\x7e]/g, "");
 }
 
-function sign(reference: string): string {
-  return createHmac("sha256", tokenSecret())
+async function sign(reference: string): Promise<string> {
+  return createHmac("sha256", await tokenSecret())
     .update(`post-purchase:${reference}`)
     .digest("base64url")
     .slice(0, 24);
 }
 
-function offerToken(reference: string): string {
-  return `${Buffer.from(reference).toString("base64url")}.${sign(reference)}`;
+async function offerToken(reference: string): Promise<string> {
+  return `${Buffer.from(reference).toString("base64url")}.${await sign(reference)}`;
 }
 
-function readOfferToken(token: string): string | null {
+async function readOfferToken(token: string): Promise<string | null> {
   const dot = token.lastIndexOf(".");
-  if (!tokenSecret() || dot <= 0) return null;
+  if (!(await tokenSecret()) || dot <= 0) return null;
   try {
     const reference = Buffer.from(token.slice(0, dot), "base64url").toString("utf8");
     const supplied = token.slice(dot + 1);
-    const expected = sign(reference);
+    const expected = await sign(reference);
     if (!reference || supplied.length !== expected.length) return null;
     return timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))
       ? reference
@@ -161,7 +164,7 @@ export async function getPostPurchaseOffer(
   paymentIntentId?: string,
 ): Promise<PostPurchaseOffer | null> {
   const config = buildOfferConfig();
-  if (!paymentIntentId || !tokenSecret() || Object.keys(config).length === 0) {
+  if (!paymentIntentId || !(await tokenSecret()) || Object.keys(config).length === 0) {
     return null;
   }
   try {
@@ -206,7 +209,7 @@ export async function getPostPurchaseOffer(
       });
     }
     if (offers.length === 0) return null;
-    return { token: offerToken(pi.id), offers };
+    return { token: await offerToken(pi.id), offers };
   } catch {
     return null;
   }
@@ -222,7 +225,7 @@ export async function chargePostPurchaseOffer(
   offerSlug: string,
 ): Promise<UpsellChargeResult> {
   const config = buildOfferConfig();
-  const originalId = readOfferToken(token);
+  const originalId = await readOfferToken(token);
   if (!originalId?.startsWith("pi_") || !config[offerSlug]) {
     throw new Error("invalid_offer");
   }

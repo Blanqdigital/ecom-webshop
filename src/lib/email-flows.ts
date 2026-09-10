@@ -37,8 +37,8 @@ export async function sendShippedEmail(
   const firstName = o.name ? o.name.split(" ")[0] : "";
   const url = trackingLink(o);
   const carrier = o.trackingCompany?.trim() || null;
-  const statusUrl = orderTokensConfigured()
-    ? orderStatusUrl(o.reference, COMPANY.url)
+  const statusUrl = (await orderTokensConfigured())
+    ? await orderStatusUrl(o.reference, COMPANY.url)
     : null;
 
   const subject = `Bestillingen din fra ${COMPANY.brand} er sendt 📦`;

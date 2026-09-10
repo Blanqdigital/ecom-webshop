@@ -173,7 +173,7 @@ export function CheckoutForm({
       <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[12px] text-faint">
         <Trust icon={<LockIcon />}>Kryptert betaling</Trust>
         <Trust icon={<TruckIcon />}>Fri frakt</Trust>
-        <Trust icon={<ReturnIcon />}>90 dagers åpent kjøp</Trust>
+        <Trust icon={<ReturnIcon />}>Se butikkens returvilkår</Trust>
       </div>
     </form>
   );

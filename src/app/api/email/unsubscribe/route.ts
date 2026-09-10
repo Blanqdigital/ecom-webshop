@@ -11,12 +11,12 @@ export const dynamic = "force-dynamic";
  */
 function page(title: string, msg: string): Response {
   return new Response(
-    `<!doctype html><html lang="nb"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · BÆRA</title>
+    `<!doctype html><html lang="nb"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · ${COMPANY.brand}</title>
      <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:16vh auto;padding:0 24px;text-align:center;color:#2a2622">
-       <div style="font-size:22px;letter-spacing:.04em;font-weight:600;margin-bottom:18px">BÆRA</div>
+       <div style="font-size:22px;letter-spacing:.04em;font-weight:600;margin-bottom:18px">${COMPANY.brand}</div>
        <h1 style="font-size:20px;margin:0 0 10px;font-weight:600">${title}</h1>
        <p style="font-size:15px;color:#6e675e;line-height:1.6">${msg}</p>
-       <p style="margin-top:24px"><a href="${COMPANY.url}" style="color:#be7e5e">Tilbake til baera.shop</a></p>
+       <p style="margin-top:24px"><a href="${COMPANY.url}" style="color:#be7e5e">Tilbake til butikken</a></p>
      </div></html>`,
     { headers: { "content-type": "text/html; charset=utf-8" } },
   );

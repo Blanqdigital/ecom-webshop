@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { getIntegration } from "./integrations";
 
-const API_VERSION = "2024-10";
+import { SHOPIFY_API_VERSION as API_VERSION, validShopifyDomain } from "./shopify-config";
 
 async function shopifyGraphql<T = unknown>(
   query: string,
@@ -9,7 +9,7 @@ async function shopifyGraphql<T = unknown>(
 ): Promise<{ ok: boolean; data?: T; errors?: unknown }> {
   const token = (await getIntegration("shopify_admin_token")).trim();
   const domain = (await getIntegration("shopify_store_domain")).trim();
-  if (!token || !domain) {
+  if (!token || !validShopifyDomain(domain)) {
     return { ok: false, errors: "Shopify not configured" };
   }
   try {
@@ -17,6 +17,8 @@ async function shopifyGraphql<T = unknown>(
       `https://${domain}/admin/api/${API_VERSION}/graphql.json`,
       {
         method: "POST",
+        redirect: "error",
+        signal: AbortSignal.timeout(15000),
         headers: {
           "content-type": "application/json",
           "X-Shopify-Access-Token": token,

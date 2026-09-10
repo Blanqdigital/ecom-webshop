@@ -17,8 +17,6 @@ export type IntegrationKey =
   | "shopify_webhook_secret"
   | "order_token_secret"
   | "post_purchase_token_secret"
-  | "meta_capi_access_token"
-  | "meta_capi_test_event_code"
   | "clarity_api_token"
   | "sale_ends_at";
 
@@ -44,8 +42,6 @@ export const SECRET_KEYS = new Set<IntegrationKey>([
   "shopify_webhook_secret",
   "order_token_secret",
   "post_purchase_token_secret",
-  "meta_capi_access_token",
-  "meta_capi_test_event_code",
   "clarity_api_token",
 ]);
 
@@ -102,14 +98,6 @@ export const GROUPS: { title: string; blurb: string; fields: Field[] }[] = [
     fields: [
       { key: "order_token_secret", label: "Order status token secret", placeholder: "long random string", hint: "Signs /ordre/[token] links in confirmation emails." },
       { key: "post_purchase_token_secret", label: "Post-purchase offer token secret", placeholder: "long random string", hint: "Signs /tilbud offer tokens after card checkout." },
-    ],
-  },
-  {
-    title: "Meta Conversions API",
-    blurb: "Server-side events. Pixel ID still lives under Settings -> Tracking.",
-    fields: [
-      { key: "meta_capi_access_token", label: "Access token", placeholder: "..." },
-      { key: "meta_capi_test_event_code", label: "Test event code", placeholder: "TEST12345", hint: "Optional - Events Manager -> Test events." },
     ],
   },
   {

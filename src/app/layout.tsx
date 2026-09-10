@@ -21,35 +21,11 @@ const instrument = Instrument_Serif({
   display: "swap",
 });
 
-const DESCRIPTION =
-  "Bæresele og bæreslynge for nyfødt fra BÆRA. Ergonomisk bæring i pustende bomull, M-stilling for sunne hofter, fra dag én til 25 kg. Fri frakt over 500 kr.";
-
+const DESCRIPTION = "Nøytral butikkmal. Tilpass produkt, merkevare og kjøpsvilkår før lansering.";
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE.url),
-  title: {
-    default: "Bæresele & bæreslynge for nyfødt - ergonomisk bæring | BÆRA",
-    template: "%s | BÆRA",
-  },
-  description: DESCRIPTION,
-  alternates: { canonical: "/" },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true, "max-image-preview": "large" },
-  },
-  openGraph: {
-    type: "website",
-    siteName: SITE.name,
-    locale: ogLocale(),
-    url: SITE.url,
-    title: "Bæresele & bæreslynge for nyfødt - BÆRA",
-    description: DESCRIPTION,
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Bæresele & bæreslynge for nyfødt - BÆRA",
-    description: DESCRIPTION,
-  },
+  metadataBase: new URL(SITE.url), title: { default: SITE.name, template: `%s | ${SITE.name}` },
+  description: DESCRIPTION, robots: { index: false, follow: false },
+  openGraph: { type: "website", siteName: SITE.name, locale: ogLocale(), title: SITE.name, description: DESCRIPTION },
 };
 
 export default function RootLayout({

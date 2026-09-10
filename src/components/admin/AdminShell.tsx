@@ -312,7 +312,7 @@ function NavButton({
         active ? "bg-ink text-cream" : "text-[#5a5a55] hover:bg-[#f3f3ef]"
       }`}
     >
-      <span className={active ? "text-cream" : "text-[#9a9a93]">{item.icon}</span>
+        <span className={active ? "text-cream" : "text-[#9a9a93]"}>{item.icon}</span>
       <span className="flex-1 text-left">{item.label}</span>
       {badge > 0 && (
         <span

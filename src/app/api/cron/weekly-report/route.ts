@@ -99,7 +99,7 @@ async function buildReport() {
   const convBase = visitors ?? pageViews ?? 0;
 
   const text = [
-    `📊 <b>BÆRA — Weekly report</b>`,
+    `📊 <b>Butikk — Weekly report</b>`,
     `${fmtDay.format(from)} → ${fmtDay.format(to)}`,
     ``,
     `👀 Visitors: <b>${n(visitors)}</b> (${n(pageViews)} page views)`,

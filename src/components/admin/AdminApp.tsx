@@ -1,5 +1,7 @@
 "use client";
 
+import { SITE } from "@/lib/site";
+
 import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
@@ -79,7 +81,7 @@ function LoginForm() {
         className="w-full max-w-[360px] rounded-2xl border border-[#e8e8e4] bg-white p-7"
       >
         <div className="mb-1 flex items-center justify-center gap-2">
-          <span className="font-serif text-[24px] tracking-[0.04em]">BÆRA</span>
+          <span className="font-serif text-[24px] tracking-[0.04em]">{SITE.name}</span>
           <span className="rounded bg-ink px-1.5 py-0.5 text-[10px] font-semibold uppercase text-cream">
             Admin
           </span>

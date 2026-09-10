@@ -65,7 +65,7 @@ export function MarketingFlowCard({
             />
             <FlowArrow label={`30 min later · ${flow.waitingFor1} waiting`} />
             <FlowNode
-              title="Email 1 — Du glemte noe hos BÆRA 🧡"
+              title="Email 1 — Du glemte noe i handlekurven 🧡"
               subtitle="The first nudge"
               count={flow.sent1}
               countLabel="sent"

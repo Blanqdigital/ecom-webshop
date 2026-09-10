@@ -36,7 +36,7 @@ interface CartCtx {
 }
 
 const Ctx = createContext<CartCtx | null>(null);
-const KEY = "bara_cart_v1";
+const KEY = "ecom_cart_v2";
 const lineKey = (i: { slug: string; colorId: string; free?: boolean }) =>
   `${i.slug}::${i.colorId}::${i.free ? "free" : "paid"}`;
 

@@ -245,7 +245,7 @@ export function CheckoutPage() {
         <div className="flex flex-col items-center gap-4 rounded-2xl border border-line bg-white py-[70px] text-center">
           <p className="text-[16px] text-muted">Handlekurven er tom.</p>
           <Link
-            href="/baereslyngen"
+            href="/"
             className="rounded-full bg-ink px-8 py-[14px] text-[15px] font-semibold text-cream transition-colors hover:bg-clay"
           >
             Se Bæreslyngen
