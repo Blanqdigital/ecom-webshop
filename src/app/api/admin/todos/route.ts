@@ -24,3 +24,146 @@ const SETUP_CHECKLIST = [
   "Test order end-to-end: admin, emails, Telegram, Shopify — then cancel the test order",
   "Go live: live Stripe keys + live webhook secret, 1 kr test order + refund",
 ];
+
+/** List todos (setup checklist + custom items). */
+export async function GET(req: Request) {
+  const auth = await authenticateAdmin(req);
+  if (!auth.ok)
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase)
+    return NextResponse.json(
+      { error: "Database isn't configured." },
+      { status: 503 },
+    );
+
+  const { data, error } = await supabase
+    .from("store_todos")
+    .select("id,label,done,sort,created_at,done_at")
+    .order("sort", { ascending: true })
+    .order("created_at", { ascending: true });
+  // Missing table (SQL not run yet) → tell the UI so it can show a hint.
+  if (error) return NextResponse.json({ ready: false, todos: [] });
+  return NextResponse.json({ ready: true, todos: data ?? [] });
+}
+
+/** Add a todo ({ label }) or seed the setup checklist ({ seed: true }). */
+export async function POST(req: Request) {
+  const auth = await authenticateAdmin(req);
+  if (!auth.ok)
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase)
+    return NextResponse.json(
+      { error: "Database isn't configured." },
+      { status: 503 },
+    );
+
+  const body = (await req.json().catch(() => ({}))) as {
+    label?: string;
+    seed?: boolean;
+  };
+
+  if (body.seed) {
+    const rows = SETUP_CHECKLIST.map((label, i) => ({ label, sort: i }));
+    const { error } = await supabase.from("store_todos").insert(rows);
+    if (error)
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, seeded: rows.length });
+  }
+
+  const label = (body.label ?? "").trim().slice(0, 300);
+  if (!label)
+    return NextResponse.json({ error: "Label is required." }, { status: 400 });
+
+  // New custom items go to the end.
+  const { data: last } = await supabase
+    .from("store_todos")
+    .select("sort")
+    .order("sort", { ascending: false })
+    .limit(1);
+  const sort = (last?.[0]?.sort ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from("store_todos")
+    .insert({ label, sort })
+    .select("id,label,done,sort,created_at,done_at")
+    .single();
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, todo: data });
+}
+
+/** Toggle/rename a todo. Body: { id, done? , label? } */
+export async function PATCH(req: Request) {
+  const auth = await authenticateAdmin(req);
+  if (!auth.ok)
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase)
+    return NextResponse.json(
+      { error: "Database isn't configured." },
+      { status: 503 },
+    );
+
+  const body = (await req.json().catch(() => ({}))) as {
+    id?: string;
+    done?: boolean;
+    label?: string;
+  };
+  if (!body.id)
+    return NextResponse.json({ error: "id is required." }, { status: 400 });
+
+  const update: Record<string, unknown> = {};
+  if (typeof body.done === "boolean") {
+    update.done = body.done;
+    update.done_at = body.done ? new Date().toISOString() : null;
+  }
+  if (typeof body.label === "string") {
+    const label = body.label.trim().slice(0, 300);
+    if (!label)
+      return NextResponse.json({ error: "Label can't be empty." }, { status: 400 });
+    update.label = label;
+  }
+  if (Object.keys(update).length === 0)
+    return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+
+  const { data, error } = await supabase
+    .from("store_todos")
+    .update(update)
+    .eq("id", body.id)
+    .select("id,label,done,sort,created_at,done_at")
+    .single();
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, todo: data });
+}
+
+/** Delete a todo. Body: { id } */
+export async function DELETE(req: Request) {
+  const auth = await authenticateAdmin(req);
+  if (!auth.ok)
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase)
+    return NextResponse.json(
+      { error: "Database isn't configured." },
+      { status: 503 },
+    );
+
+  const body = (await req.json().catch(() => ({}))) as { id?: string };
+  if (!body.id)
+    return NextResponse.json({ error: "id is required." }, { status: 400 });
+
+  const { error } = await supabase
+    .from("store_todos")
+    .delete()
+    .eq("id", body.id);
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
