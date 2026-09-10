@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Elements } from "@stripe/react-stripe-js";
-import type { StripeElementsOptions } from "@stripe/stripe-js";
+import type { Stripe, StripeElementsOptions } from "@stripe/stripe-js";
 import { getStripeBrowser } from "@/lib/stripe-browser";
 import { useCart } from "@/components/cart/CartProvider";
 import { track } from "@/lib/track";
@@ -19,8 +19,6 @@ export interface AppliedCoupon {
   code: string;
   percentOff: number;
 }
-
-const stripePromise = getStripeBrowser();
 
 // Load the brand font INTO the Stripe iframe so inputs match the site (the
 // iframe can't see the page's --font-grotesk CSS variable).
@@ -66,6 +64,11 @@ const appearance: StripeElementsOptions["appearance"] = {
   },
 };
 
+interface PaymentRuntime {
+  vippsEnabled: boolean;
+  stripePublishableKey: string;
+}
+
 export function CheckoutPage() {
   const cart = useCart();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -78,11 +81,46 @@ export function CheckoutPage() {
   const [coupon, setCoupon] = useState<AppliedCoupon | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [runtime, setRuntime] = useState<PaymentRuntime | null>(null);
+  const [stripePromise, setStripePromise] =
+    useState<Promise<Stripe | null> | null>(null);
   const startedRef = useRef(false);
 
   // A 100% coupon makes the total 0 — Stripe/Vipps can't charge that, so the
   // payment UI is swapped for the free-order form.
   const freeOrder = !!coupon && coupon.percentOff >= 100;
+
+  // Public payment flags from Admin → Integrations (env still wins server-side).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/site-config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const pk =
+          typeof data.stripePublishableKey === "string"
+            ? data.stripePublishableKey
+            : "";
+        setRuntime({
+          vippsEnabled: data.vippsEnabled === true,
+          stripePublishableKey: pk,
+        });
+        setStripePromise(getStripeBrowser(pk || null));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Fall back to build-time env via getStripeBrowser().
+        setRuntime({
+          vippsEnabled: process.env.NEXT_PUBLIC_VIPPS_ENABLED === "1",
+          stripePublishableKey:
+            process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "",
+        });
+        setStripePromise(getStripeBrowser());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /** Validate a code server-side, then sync the pending PaymentIntent. */
   async function applyCoupon(code: string) {
@@ -198,8 +236,8 @@ export function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart.hydrated]);
 
-  const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-  const vippsEnabled = process.env.NEXT_PUBLIC_VIPPS_ENABLED === "1";
+  const pk = runtime?.stripePublishableKey ?? "";
+  const vippsEnabled = runtime?.vippsEnabled === true;
 
   if (cart.hydrated && cart.items.length === 0) {
     return (
@@ -239,13 +277,13 @@ export function CheckoutPage() {
           <div className="rounded-2xl border border-line bg-white p-5 sm:p-7">
             {freeOrder ? (
               <FreeOrderForm bump={bumpPayload} coupon={coupon!.code} />
-            ) : !pk ? (
+            ) : runtime && !pk ? (
               <p className="text-[15px] text-muted">
                 Betaling er ikke konfigurert ennå.
               </p>
             ) : error ? (
               <p className="text-[14px] text-red-700">{error}</p>
-            ) : clientSecret ? (
+            ) : clientSecret && stripePromise ? (
               <Elements
                 stripe={stripePromise}
                 options={{ clientSecret, locale: "nb", appearance, fonts }}
