@@ -1,4 +1,5 @@
 import { recordOrder, type OrderAddress } from "./orders";
+import { getIntegration } from "./integrations";
 
 // Server-only Vipps (Vipps MobilePay) ePayment API client.
 // Docs: https://developer.vippsmobilepay.com/docs/APIs/epayment-api/
@@ -8,8 +9,8 @@ import { recordOrder, type OrderAddress } from "./orders";
 // The webhook and the /takk return URL both call finalizeVippsPayment(), which
 // is idempotent, so an order is recorded once regardless of which arrives first.
 //
-// No-ops (vippsConfigured() === false) until the four credentials are set, so
-// the store runs without Vipps until it's turned on.
+// No-ops (vippsConfigured() === false) until the four credentials are set
+// (env or Admin → Integrations), so the store runs without Vipps until on.
 
 const TEST_BASE = "https://apitest.vipps.no";
 const PROD_BASE = "https://api.vipps.no";
@@ -27,31 +28,39 @@ export class VippsError extends Error {}
 /** Strip stray non printable-ASCII chars a dashboard copy-paste can inject. */
 const clean = (v?: string) => v?.replace(/[^\x21-\x7e]/g, "") ?? "";
 
-function config() {
+async function config() {
+  const [clientId, clientSecret, subKey, msn, env] = await Promise.all([
+    getIntegration("vipps_client_id"),
+    getIntegration("vipps_client_secret"),
+    getIntegration("vipps_subscription_key"),
+    getIntegration("vipps_msn"),
+    getIntegration("vipps_env"),
+  ]);
   return {
-    clientId: clean(process.env.VIPPS_CLIENT_ID),
-    clientSecret: clean(process.env.VIPPS_CLIENT_SECRET),
-    subKey: clean(process.env.VIPPS_SUBSCRIPTION_KEY),
-    msn: clean(process.env.VIPPS_MSN),
-    env: (process.env.VIPPS_ENV ?? "test").trim().toLowerCase(),
+    clientId: clean(clientId),
+    clientSecret: clean(clientSecret),
+    subKey: clean(subKey),
+    msn: clean(msn),
+    env: (env || "test").trim().toLowerCase(),
   };
 }
 
-export function vippsConfigured(): boolean {
-  const c = config();
+export async function vippsConfigured(): Promise<boolean> {
+  const c = await config();
   return !!(c.clientId && c.clientSecret && c.subKey && c.msn);
 }
 
-function requireConfig() {
-  const c = config();
+async function requireConfig() {
+  const c = await config();
   if (!c.clientId || !c.clientSecret || !c.subKey || !c.msn) {
     throw new VippsError("Vipps er ikke konfigurert.");
   }
   return c;
 }
 
-function baseUrl(): string {
-  return config().env === "production" ? PROD_BASE : TEST_BASE;
+async function baseUrl(): Promise<string> {
+  const c = await config();
+  return c.env === "production" ? PROD_BASE : TEST_BASE;
 }
 
 // --- Access token (cached in-memory, refreshed a minute before expiry) --------
@@ -62,8 +71,8 @@ async function getAccessToken(): Promise<string> {
   if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) {
     return tokenCache.token;
   }
-  const c = requireConfig();
-  const res = await fetch(`${baseUrl()}/accesstoken/get`, {
+  const c = await requireConfig();
+  const res = await fetch(`${await baseUrl()}/accesstoken/get`, {
     method: "POST",
     headers: {
       client_id: c.clientId,
@@ -82,8 +91,8 @@ async function getAccessToken(): Promise<string> {
   return tokenCache.token;
 }
 
-function apiHeaders(token: string): Record<string, string> {
-  const c = requireConfig();
+async function apiHeaders(token: string): Promise<Record<string, string>> {
+  const c = await requireConfig();
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
@@ -102,7 +111,7 @@ interface VippsAmount {
 
 interface VippsPayment {
   reference?: string;
-  state?: string; // CREATED | AUTHORIZED | CAPTURED | ABORTED | EXPIRED | TERMINATED
+  state?: string;
   amount?: VippsAmount;
   aggregate?: {
     authorizedAmount?: VippsAmount;
@@ -139,16 +148,14 @@ export async function createVippsPayment(input: {
     returnUrl: input.returnUrl,
     reference: input.reference,
     paymentDescription: input.description,
-    // Ask the customer to share contact + shipping details in the Vipps app,
-    // so we don't need a separate address form for the Vipps flow.
     profile: { scope: "name phoneNumber email address" },
     ...(input.metadata && Object.keys(input.metadata).length
       ? { metadata: input.metadata }
       : {}),
   };
-  const res = await fetch(`${baseUrl()}/epayment/v1/payments`, {
+  const res = await fetch(`${await baseUrl()}/epayment/v1/payments`, {
     method: "POST",
-    headers: { ...apiHeaders(token), "Idempotency-Key": input.reference },
+    headers: { ...(await apiHeaders(token)), "Idempotency-Key": input.reference },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -161,8 +168,8 @@ export async function createVippsPayment(input: {
 async function getVippsPayment(reference: string): Promise<VippsPayment> {
   const token = await getAccessToken();
   const res = await fetch(
-    `${baseUrl()}/epayment/v1/payments/${encodeURIComponent(reference)}`,
-    { method: "GET", headers: apiHeaders(token) },
+    `${await baseUrl()}/epayment/v1/payments/${encodeURIComponent(reference)}`,
+    { method: "GET", headers: await apiHeaders(token) },
   );
   if (!res.ok) {
     throw new VippsError(`get ${res.status}: ${await res.text().catch(() => "")}`);
@@ -173,10 +180,10 @@ async function getVippsPayment(reference: string): Promise<VippsPayment> {
 async function captureVippsPayment(reference: string, amountOre: number) {
   const token = await getAccessToken();
   const res = await fetch(
-    `${baseUrl()}/epayment/v1/payments/${encodeURIComponent(reference)}/capture`,
+    `${await baseUrl()}/epayment/v1/payments/${encodeURIComponent(reference)}/capture`,
     {
       method: "POST",
-      headers: { ...apiHeaders(token), "Idempotency-Key": `capture-${reference}` },
+      headers: { ...(await apiHeaders(token)), "Idempotency-Key": `capture-${reference}` },
       body: JSON.stringify({
         modificationAmount: { currency: "NOK", value: amountOre },
       }),
@@ -196,11 +203,6 @@ export interface VippsFinalizeResult {
   cartRaw?: string;
 }
 
-/**
- * Fetch the authoritative payment from Vipps and finalise it: if AUTHORIZED,
- * capture the full amount, then record the order. Idempotent — safe to call
- * from both the webhook and the /takk return URL, and safe to call twice.
- */
 export async function finalizeVippsPayment(
   reference: string,
 ): Promise<VippsFinalizeResult> {
@@ -214,12 +216,9 @@ export async function finalizeVippsPayment(
     try {
       await captureVippsPayment(reference, authorized);
     } catch (e) {
-      // Capture can be retried later (from admin); still record as paid since
-      // the funds are authorized/reserved.
       console.error("[vipps] capture failed:", (e as Error).message);
     }
   } else if (state !== "CAPTURED") {
-    // CREATED / ABORTED / EXPIRED / TERMINATED — nothing to record.
     return { recorded: false, state, amountOre: 0, currency };
   }
 
@@ -246,7 +245,6 @@ export async function finalizeVippsPayment(
   };
 }
 
-/** Pull name / email / phone / address from a payment's shared profile. */
 function extractUser(payment: VippsPayment): {
   name: string | null;
   email: string | null;
@@ -273,14 +271,11 @@ function extractUser(payment: VippsPayment): {
   };
 }
 
-// --- Webhooks (optional reliability layer) ------------------------------------
-
-/** Register our webhook endpoint with Vipps for authorized/captured events. */
 export async function registerVippsWebhook(url: string) {
   const token = await getAccessToken();
-  const res = await fetch(`${baseUrl()}/webhooks/v1/webhooks`, {
+  const res = await fetch(`${await baseUrl()}/webhooks/v1/webhooks`, {
     method: "POST",
-    headers: apiHeaders(token),
+    headers: await apiHeaders(token),
     body: JSON.stringify({
       url,
       events: [
@@ -297,8 +292,8 @@ export async function registerVippsWebhook(url: string) {
 
 export async function listVippsWebhooks() {
   const token = await getAccessToken();
-  const res = await fetch(`${baseUrl()}/webhooks/v1/webhooks`, {
-    headers: apiHeaders(token),
+  const res = await fetch(`${await baseUrl()}/webhooks/v1/webhooks`, {
+    headers: await apiHeaders(token),
   });
   if (!res.ok) {
     throw new VippsError(`list ${res.status}: ${await res.text().catch(() => "")}`);

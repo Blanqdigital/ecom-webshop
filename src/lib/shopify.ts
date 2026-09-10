@@ -1,8 +1,8 @@
 // Shopify Admin API (GraphQL). Pushes paid web orders into a Shopify store so
 // a dropship supplier (e.g. TeamDrop) can fulfil them. No-ops until BOTH
-// SHOPIFY_ADMIN_TOKEN and SHOPIFY_STORE_DOMAIN are set. The token is a
-// custom-app Admin API token (write_orders, read_products) — server-only,
-// never exposed to the client.
+// shopify_admin_token and shopify_store_domain are set (env or Admin →
+// Integrations). The token is a custom-app Admin API token (write_orders,
+// read_products) — server-only, never exposed to the client.
 //
 // PER-STORE: fill SHOPIFY_VARIANT_MAP below for the product imported into the
 // new Shopify store. Verify variants by IMAGE, not by name — supplier variant
@@ -10,15 +10,17 @@
 
 import { getProduct } from "./products";
 import { bumpUnitPriceNok } from "./offers";
+import { getIntegration } from "./integrations";
 
 const API_VERSION = "2024-10";
 
-function shopDomain(): string {
-  return process.env.SHOPIFY_STORE_DOMAIN?.trim() || "";
+async function shopDomain(): Promise<string> {
+  return (await getIntegration("shopify_store_domain")).trim();
 }
 
-export function shopifyConfigured(): boolean {
-  return !!process.env.SHOPIFY_ADMIN_TOKEN?.trim() && !!shopDomain();
+export async function shopifyConfigured(): Promise<boolean> {
+  const token = (await getIntegration("shopify_admin_token")).trim();
+  return !!token && !!(await shopDomain());
 }
 
 interface GqlResult<T> {
@@ -32,13 +34,13 @@ export async function shopifyGraphql<T = unknown>(
   query: string,
   variables?: Record<string, unknown>,
 ): Promise<GqlResult<T>> {
-  const token = process.env.SHOPIFY_ADMIN_TOKEN?.trim();
+  const token = (await getIntegration("shopify_admin_token")).trim();
   if (!token) {
     return { ok: false, status: 0, errors: "SHOPIFY_ADMIN_TOKEN not set" };
   }
   try {
     const res = await fetch(
-      `https://${shopDomain()}/admin/api/${API_VERSION}/graphql.json`,
+      `https://${await shopDomain()}/admin/api/${API_VERSION}/graphql.json`,
       {
         method: "POST",
         headers: {
@@ -114,7 +116,7 @@ export interface ShopifySyncResult {
 export async function createShopifyOrder(
   o: ShopifyOrderInput,
 ): Promise<ShopifySyncResult> {
-  if (!shopifyConfigured()) {
+  if (!(await shopifyConfigured())) {
     return { ok: false, skipped: "SHOPIFY_ADMIN_TOKEN not set" };
   }
   if (Object.keys(SHOPIFY_VARIANT_MAP).length === 0) {

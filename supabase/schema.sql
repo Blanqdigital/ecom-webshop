@@ -123,9 +123,13 @@ create index if not exists email_log_created_idx
 alter table public.email_log enable row level security;
 
 
--- Store settings — key/value pairs editable from the admin Settings tab
--- (tracking IDs like the Meta pixel, Google tag and Clarity project). Read
--- server-side; env vars with the same meaning always take precedence.
+-- Store settings — key/value pairs editable from the admin:
+--   Settings tab  → tracking IDs (Meta pixel, Google tag, Clarity project)
+--   Integrations  → API secrets + payment/email/config (Stripe, Resend, Vipps, …)
+-- Read server-side with the service-role key only (RLS on, no policies).
+-- Env vars with the same meaning always take precedence over DB values.
+-- Bootstrap secrets (Supabase, ADMIN_EMAILS, CRON_SECRET, STRIPE_WEBHOOK_SECRET,
+-- EMAIL_UNSUB_SECRET, BLANQ_METRICS_TOKEN) stay in host env — never in this table.
 
 -- Discount coupons — created/managed from the admin (Marketing tab). Applied
 -- at checkout by code; a 100% coupon routes through the free-order flow

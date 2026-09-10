@@ -1,13 +1,14 @@
 // Telegram order notifications. Sends the shop owner an instant message with the
 // full order the moment it's recorded (fired from recordOrder, same as the
-// emails). No-ops until TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID are set.
+// emails). No-ops until telegram_bot_token + telegram_chat_id are set (env or
+// Admin → Integrations).
 //
-// Setup: talk to @BotFather to create a bot (TELEGRAM_BOT_TOKEN); message the
-// bot once, then get your chat id from
-// https://api.telegram.org/bot<TOKEN>/getUpdates (the chat.id field).
+// Setup: talk to @BotFather to create a bot; message the bot once, then get
+// your chat id from https://api.telegram.org/bot<TOKEN>/getUpdates.
 import type { OrderEmailData } from "./email";
 import { COMPANY } from "./company";
 import { getProduct } from "./products";
+import { getIntegration } from "./integrations";
 
 const money = (n: number, ccy: string) =>
   new Intl.NumberFormat("en-GB", {
@@ -65,8 +66,8 @@ export interface TelegramResult {
 export async function sendTelegramMessage(
   text: string,
 ): Promise<TelegramResult> {
-  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+  const token = (await getIntegration("telegram_bot_token")).trim();
+  const chatId = (await getIntegration("telegram_chat_id")).trim();
   if (!token || !chatId) {
     return { ok: false, error: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set" };
   }

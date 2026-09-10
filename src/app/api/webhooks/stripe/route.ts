@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   const raw = await req.text();
   let event: Stripe.Event;
   try {
-    event = getStripe().webhooks.constructEvent(raw, sig, secret);
+    event = (await getStripe()).webhooks.constructEvent(raw, sig, secret);
   } catch (err) {
     return NextResponse.json(
       { error: `Signature verification failed: ${(err as Error).message}` },
@@ -24,8 +24,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Hosted Checkout (Checkout Session) and the custom Payment Element flow
-  // (PaymentIntent) both land here; normalise each into one order record.
   if (event.type === "checkout.session.completed") {
     const s = event.data.object as Stripe.Checkout.Session;
     await recordOrder({

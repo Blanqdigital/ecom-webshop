@@ -14,7 +14,7 @@ interface ReqItem {
 export async function POST(req: Request) {
   let stripe;
   try {
-    stripe = getStripe();
+    stripe = await getStripe();
   } catch {
     return NextResponse.json(
       { error: "Betaling er ikke konfigurert ennå." },

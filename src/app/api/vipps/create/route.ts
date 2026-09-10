@@ -8,13 +8,8 @@ import { SITE } from "@/lib/site";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Starts a Vipps ePayment for the cart and returns the redirect URL. The cart
- * is priced on the SERVER (same as the Stripe flow); client amounts are never
- * trusted.
- */
 export async function POST(req: Request) {
-  if (!vippsConfigured()) {
+  if (!(await vippsConfigured())) {
     return NextResponse.json(
       { error: "Vipps er ikke konfigurert ennå." },
       { status: 503 },
@@ -37,8 +32,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Optional coupon — a free (0 kr) total can't go through Vipps; the client
-  // shows the free-order flow instead of the Vipps button in that case.
   let amountOre = priced.amountOre;
   let couponCode: string | undefined;
   const coupon = await findValidCoupon(body?.coupon);
@@ -51,7 +44,7 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (amountOre < 100) amountOre = 100; // Vipps minimum 1 NOK
+    if (amountOre < 100) amountOre = 100;
   }
 
   const reference = `baera-${randomUUID()}`;
