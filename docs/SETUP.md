@@ -2,8 +2,9 @@
 
 How to go from this template to a live, selling store. Budget ~1–2 hours of
 setup plus however long the storefront copy/images take. Everything integrates
-lazily: each feature is dead until its env vars are set, so you can launch with
-just Stripe + Supabase and light the rest up later.
+lazily: each feature is dead until its secret is set (host env **or**
+Admin → Integrations), so you can launch with just Supabase bootstrap + Stripe
+and light the rest up later.
 
 For the full war stories behind these steps (what broke and why), read
 [PLAYBOOK.md](./PLAYBOOK.md).
@@ -36,22 +37,35 @@ samples you still need to replace.
 ## 3. Supabase
 
 New project → SQL editor → paste **all of `supabase/schema.sql`** → run.
-That creates `orders`, `abandoned_carts`, `funnel_events`, `email_log` (RLS on,
-no policies — service-role only). Copy URL + anon key + service-role key into
-env.
+That creates `orders`, `abandoned_carts`, `funnel_events`, `email_log`,
+`store_settings`, `store_todos`, `coupons` (RLS on, no policies — service-role
+only). Copy URL + anon key + service-role key into env.
 
-## 4. Stripe
+## 4. Bootstrap env → deploy → Admin Integrations
 
-- API keys → env (`STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`).
-- Webhook endpoint → `https://<domain>/api/webhooks/stripe`, subscribed to
-  **`checkout.session.completed` AND `payment_intent.succeeded`** — get this
-  wrong and orders silently never record. Verify the subscribed events on the
-  destination itself, not just that the endpoint exists.
-- Signing secret → `STRIPE_WEBHOOK_SECRET`.
+**Host env only needs a handful of bootstrap vars** (these never move to the DB):
+
+| Var | Why |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Auth + DB |
+| `ADMIN_EMAILS` | Who can open `/admin` |
+| `CRON_SECRET` | Abandoned-cart + weekly report crons |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signature verification |
+| Optional: `EMAIL_UNSUB_SECRET`, `BLANQ_METRICS_TOKEN`, `NEXT_PUBLIC_SITE_URL` | Unsubscribe HMAC, metrics feed, canonical URL |
+
+Deploy to Vercel with those set. Then sign in to `/admin` → **Integrations** and
+paste Stripe / Resend / Vipps / Telegram / Shopify / Meta CAPI / Clarity API
+tokens. Env vars still win as hard overrides (admin fields lock when set).
+
+**Stripe webhook** (still required in the Stripe Dashboard):
+
+- Endpoint → `https://<domain>/api/webhooks/stripe`
+- Events: **`checkout.session.completed` AND `payment_intent.succeeded`**
+- Signing secret → `STRIPE_WEBHOOK_SECRET` (bootstrap env)
 
 ## 5. Vercel
 
-Import the repo, paste every var from `.env.example`, deploy.
+Import the repo, paste bootstrap vars (and any env overrides you want), deploy.
 
 - Deploy into the **Blanq / team account that owns this store** (pass the right
   `--scope` on the CLI). Do not assume a personal Hobby team from an older
@@ -60,7 +74,8 @@ Import the repo, paste every var from `.env.example`, deploy.
 - **Never add sub-daily crons to `vercel.json` on Hobby** — it silently blocks
   ALL deploys (no deployment records at all). Scheduling lives in GitHub
   Actions instead (already included).
-- Env vars snapshot at deploy time: change a var → redeploy.
+- Env vars snapshot at deploy time: change a **bootstrap** var → redeploy.
+  Integrations pasted in admin apply without redeploy (~60s cache).
 
 ## 6. GitHub Actions (crons)
 
@@ -77,10 +92,11 @@ the first scheduled run.
 
 ## 7. Email (Resend)
 
-Verify the sending domain, set `RESEND_API_KEY` + `ORDER_FROM` (must be on the
-verified domain) + `ORDER_NOTIFY_TO`. Until the domain is verified, Resend is
-in test mode and only mails your own address. Send-only domains can't
-*receive* — create a real mailbox (or forwarding) for the support address.
+Verify the sending domain, then set Resend API key + `ORDER_FROM` (must be on
+the verified domain) + `ORDER_NOTIFY_TO` in **Admin → Integrations** (or env).
+Until the domain is verified, Resend is in test mode and only mails your own
+address. Send-only domains can't *receive* — create a real mailbox (or
+forwarding) for the support address.
 
 ## 8. Tracking — paste it in the backend
 
@@ -92,22 +108,21 @@ redeploy — live within ~5 minutes (edge cache):
   Verify with the Meta Pixel Helper extension or Events Manager → Test events
   — never with the "Event Setup Tool" (that's for sites without coded events
   and breaks the page render).
-- **Meta Conversions API (optional)** — set `META_CAPI_ACCESS_TOKEN` (and
-  optionally `META_CAPI_TEST_EVENT_CODE`) to send server-side events deduped
-  with the browser pixel via `event_id`. No-ops until configured.
+- **Meta Conversions API (optional)** — paste access token (and optional test
+  event code) in **Admin → Integrations**. No-ops until configured.
 - **Google tag** — GA4 `G-…`, Ads `AW-…` or `GT-…`.
-- **Microsoft Clarity** project ID. Also set `CLARITY_API_TOKEN` in Vercel
-  (Clarity → Settings → Data export) to light up the Clarity panel in
-  /admin → Insights.
+- **Microsoft Clarity** project ID in Settings. Also paste Clarity API token
+  in Integrations (Clarity → Settings → Data export) for /admin → Insights.
 
 All three no-op while empty. The `NEXT_PUBLIC_*` env vars still work as hard
 overrides (the admin field locks when one is set).
 
 ## 9. Payments beyond cards (optional)
 
-- **Vipps**: the four `VIPPS_*` vars + `NEXT_PUBLIC_VIPPS_ENABLED=1`. Requires
-  the company details from `company.ts` visible on the site for verification.
-- **Telegram order alerts**: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`
+- **Vipps**: paste the four credentials in Integrations and flip the Vipps
+  toggle (or set `NEXT_PUBLIC_VIPPS_ENABLED=1`). Requires the company details
+  from `company.ts` visible on the site for verification.
+- **Telegram order alerts**: bot token + chat id in Integrations
   (message the bot once first; group IDs are negative).
 
 ## 10. Fulfilment via Shopify (optional, dropship suppliers)
@@ -117,8 +132,8 @@ If the supplier only fulfils through Shopify (e.g. TeamDrop):
 1. Import the product into the Shopify store **via the supplier's app** (keeps
    the supplier link).
 2. Custom app (Settings → Apps and sales channels → Develop apps) with
-   `write_orders` + `read_products` → `shpat_` Admin token → env
-   (`SHOPIFY_ADMIN_TOKEN`, `SHOPIFY_STORE_DOMAIN`).
+   `write_orders` + `read_products` → `shpat_` Admin token → Integrations
+   (token + store domain).
 3. Update `SHOPIFY_VARIANT_MAP` + `PRODUCT_GID` in `src/lib/shopify.ts`.
    **Match variants by image, not by name** — supplier variant names lie.
 4. Test with `?shopify=testorder`, then cancel the test order in Shopify
@@ -134,7 +149,8 @@ items off as you go and add store-specific tasks.
       customer + owner emails, Telegram ping, (Shopify order if configured)
 - [ ] `?orders=1` and `?emails=1` diagnostics return sane data
       (`/api/cron/abandoned-cart?key=<CRON_SECRET>&...`)
-- [ ] Swap Stripe to live keys, live webhook, redeploy
+- [ ] Swap Stripe to live keys (Integrations or env), live webhook, redeploy if
+      webhook secret changed
 - [ ] Real 1 kr test order (refund it after)
 - [ ] Legal pages match `company.ts` (vilkår, personvern, angrerett)
 - [ ] `grep -ri` for leftover template brand strings
